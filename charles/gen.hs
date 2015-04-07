@@ -9,17 +9,21 @@ module Gen where
   genAbsyn s = 
     let p = P.genParams s
     in A.Prog [ gen_Package p,
-                gen_Imports p,
+                gen_Imports,
                 gen_Type p, 
-                gen_feZero p, 
-                gen_feOne p,
-                gen_feAdd p,
-                gen_feSub p,
-                gen_feCopy p,
-                gen_feCMove p,
-                gen_load3 p,
-                gen_load4 p,
-                gen_feFromBytes p ]
+                gen_feZero, 
+                gen_feOne,
+                gen_feAdd,
+                gen_feSub,
+                gen_feCopy,
+                gen_feCMove,
+                gen_load3,
+                gen_load4,
+                gen_feFromBytes p,
+                gen_feToBytes p,
+                gen_feIsNegative,
+                gen_feIsNonZero,
+                gen_feNeg ]
 
 -----------------------------------
 --                               --
@@ -27,17 +31,17 @@ module Gen where
 --                               --
 -----------------------------------
 
-  gen_Package :: Params -> A.Dec
-  gen_Package p = A.PackageDec "scalarmult"
+  gen_Package :: P.Params -> A.Dec
+  gen_Package p = A.PackageDec ("ed" ++ (show (base p)) ++ (show (offset p)))
 
-  gen_Imports :: Params -> A.Dec
-  gen_Imports p = A.ImportDec "fml"
+  gen_Imports :: A.Dec
+  gen_Imports = A.ImportDec "fmt"
 
-  gen_Type :: Params -> A.Dec
+  gen_Type :: P.Params -> A.Dec
   gen_Type p = A.TypeDec {td="fieldElement", ty="int32", size=(len p)}
 
-  gen_feZero :: Params -> A.Dec
-  gen_feZero p = 
+  gen_feZero :: A.Dec
+  gen_feZero = 
     let param = A.Param { pvar="fe",
                           ptyp=Just "*fieldElement" }
         exp'  = A.AssignExp { var=A.Var{v="fe", idx=Just "i"},
@@ -52,8 +56,8 @@ module Gen where
                         result=Nothing,
                         body=body' }
 
-  gen_feOne :: Params -> A.Dec
-  gen_feOne p = 
+  gen_feOne :: A.Dec
+  gen_feOne = 
     let param = A.Param { pvar="fe",
                           ptyp = Just "*fieldElement" }
         exp1 = A.AppExp { func="feZero",
@@ -66,8 +70,8 @@ module Gen where
                         result=Nothing,
                         body=A.SeqExp [exp1, exp2] }
 
-  gen_feAdd :: Params -> A.Dec
-  gen_feAdd p =
+  gen_feAdd :: A.Dec
+  gen_feAdd =
     let param1 = A.Param { pvar="dst", ptyp=Nothing }
         param2 = A.Param { pvar="a", ptyp=Nothing }
         param3 = A.Param { pvar="b",
@@ -90,8 +94,8 @@ module Gen where
                         result=Nothing,
                         body=body' }
 
-  gen_feSub :: Params -> A.Dec
-  gen_feSub p =
+  gen_feSub :: A.Dec
+  gen_feSub =
     let param1 = A.Param { pvar="dst", ptyp=Nothing }
         param2 = A.Param { pvar="a", ptyp=Nothing }
         param3 = A.Param { pvar="b",
@@ -114,8 +118,8 @@ module Gen where
                         result=Nothing,
                         body=body' }
 
-  gen_feCopy :: Params -> A.Dec
-  gen_feCopy p =
+  gen_feCopy :: A.Dec
+  gen_feCopy =
     let param1 = A.Param { pvar="dst", ptyp=Nothing }
         param2 = A.Param { pvar="src",
                            ptyp=Just "*fieldElement" }
@@ -133,13 +137,11 @@ module Gen where
                         result=Nothing,
                         body=body' }
 
-  gen_feCMove :: Params -> A.Dec
-  gen_feCMove p =
+  gen_feCMove :: A.Dec
+  gen_feCMove =
     let param1 = A.Param { pvar="f", ptyp=Nothing }
-        param2 = A.Param { pvar="g",
-                           ptyp=Just "*fieldElement" }
-        param3 = A.Param { pvar="b",
-                           ptyp=Just "int32" }
+        param2 = A.Param { pvar="g", ptyp=Just "*fieldElement" }
+        param3 = A.Param { pvar="b", ptyp=Just "int32" }
         exp1 = A.VarDecExp {vd=[A.Var {v="x", idx=Nothing}],
                             typ="fieldElement"}
         exp2 = A.AssignExp {var=A.Var {v="b", idx=Nothing},
@@ -168,26 +170,27 @@ module Gen where
                         result=Nothing,
                         body=A.SeqExp [exp1, exp2, exp5, exp7] }
 
--- a general way to load
 -- super unclean code by what can you do eh
-  gen_load' :: Params -> [A.Exp]
-  gen_load' p =
+  gen_load' :: [A.Exp]
+  gen_load' =
     let v = A.Var {v="r", idx=Nothing}
         exp1 = A.VarDecExp {vd=[v],
                             typ="int64"}
         exp2 = A.AssignExp {var=v,
                             aexp=A.TypeCastExp { 
-                              tcvar=A.Var{ v="in", idx=Just "0"},
+                              tcexp=A.VarExp A.Var{ v="in", idx=Just "0"},
                               tctyp="int64" },
                             aoper = Nothing }
-        exp3 = A.OpExp {left=A.TypeCastExp{ tcvar=A.Var{ v="in", idx=Just "1"},
+        exp3 = A.OpExp {left=A.TypeCastExp{ tcexp=A.VarExp A.Var{ v="in", 
+                                                                  idx=Just "1"},
                                             tctyp="int64" }, 
                         oper=A.LShiftOp,
                         right=A.IntExp(8)}
         exp4 = A.AssignExp {var=v,
                             aexp=exp3,
                             aoper=Just A.OrOp }
-        exp5 = A.OpExp {left=A.TypeCastExp{ tcvar=A.Var{ v="in", idx=Just "2"},
+        exp5 = A.OpExp {left=A.TypeCastExp{ tcexp=A.VarExp A.Var{ v="in", 
+                                                                  idx=Just "2"},
                                             tctyp="int64" }, 
                         oper=A.LShiftOp,
                         right=A.IntExp(16)}
@@ -196,9 +199,9 @@ module Gen where
                             aoper=Just A.OrOp }
     in [exp1, exp2, exp4, exp6]
 
-  gen_load3 :: Params -> A.Dec
-  gen_load3 p =
-    let exps = gen_load' p
+  gen_load3 :: A.Dec
+  gen_load3 =
+    let exps = gen_load'
         r = A.ReturnExp (A.VarExp A.Var {v="r", idx=Nothing})
         b = A.SeqExp (exps ++ [r])
     in A.FunctionDec  { fd="load3",
@@ -206,11 +209,12 @@ module Gen where
                         result=Just "int64",
                         body=b }
 
-  gen_load4 :: Params -> A.Dec
-  gen_load4 p =
+  gen_load4 :: A.Dec
+  gen_load4 =
     let v = A.Var {v="r", idx=Nothing}
-        exps = gen_load' p
-        exp1 = A.OpExp {left=A.TypeCastExp{ tcvar=A.Var{ v="in", idx=Just "3"},
+        exps = gen_load'
+        exp1 = A.OpExp {left=A.TypeCastExp{ tcexp=A.VarExp A.Var{ v="in", 
+                                                                  idx=Just "3"},
                                             tctyp="int64" }, 
                         oper=A.LShiftOp,
                         right=A.IntExp(24)}
@@ -224,13 +228,86 @@ module Gen where
                         result=Just "int64",
                         body=b }
 
+  gen_feIsNegative :: A.Dec
+  gen_feIsNegative =
+    let param = A.Param { pvar="f", ptyp=Just "*fieldElement" }
+        e1 = A.VarDecExp {vd=[A.Var{v="s", idx=Nothing }],
+                          typ="[32]byte" }
+        e2 = A.AppExp { func="feToBytes",
+                        args=[A.Var{v="&s", idx=Nothing },
+                              A.Var{v="f", idx=Nothing }] }
+        e3 = A.VarExp A.Var { v="s", idx=Just "0"}
+        e4 = A.OpExp {left=e3,
+                      oper=A.AndOp,
+                      right=A.IntExp(1) }
+
+        e5 = A.ReturnExp e4
+    in A.FunctionDec  { fd="feIsNegative",
+                        params=[param],
+                        result=Just "byte",
+                        body=A.SeqExp[e1, e2, e5] }
+
+  gen_feIsNonZero :: A.Dec
+  gen_feIsNonZero =
+    let param = A.Param { pvar="f", ptyp=Just "*fieldElement" }
+        e1 = A.VarDecExp {vd=[A.Var{v="s", idx=Nothing }],
+                          typ="[32]byte" }
+        e2 = A.AppExp { func="feToBytes",
+                        args=[A.Var{v="&s", idx=Nothing },
+                              A.Var{v="f", idx=Nothing }] }
+        e3 = A.VarDecExp {vd=[A.Var{v="x", idx=Nothing }],
+                          typ="uint8" }
+        e4' = A.AssignExp { var=A.Var{v="x", idx=Nothing },
+                            aexp=A.VarExp A.Var{v="b", idx=Nothing },
+                            aoper=Just A.OrOp}
+        e5 = A.RangeExp  { rvar=A.Var{v="_, b", idx=Nothing },
+                              rangevar=A.Var{v="x", idx=Nothing },
+                              rloop=e4' }
+
+        g a b = A.OpExp { left=A.VarExp A.Var{v=a, idx=Nothing },
+                          oper=A.RShiftOp,
+                          right=A.IntExp(b)}
+        g' a b = A.AssignExp {var=A.Var{v=a, idx=Nothing },
+                              aexp=b,
+                              aoper=Just A.OrOp}
+        g'' a b = g' a (g a b)
+        e6 = g'' "x" 4
+        e7 = g'' "x" 2
+        e8 = g'' "x" 1
+
+        e9' = A.OpExp { left=A.VarExp A.Var {v="x", idx=Nothing },
+                        oper=A.AndOp,
+                        right=A.IntExp(1) }
+        e10 = A.ReturnExp A.TypeCastExp { tcexp=e9', tctyp="int32" }
+    in A.FunctionDec  { fd="feIsNonZero",
+                        params=[param],
+                        result=Just "int32",
+                        body=A.SeqExp[e1, e2, e3, e5, e6, e7, e8, e10]}
+
+  gen_feNeg :: A.Dec
+  gen_feNeg =
+    let param1 = A.Param { pvar="f", ptyp=Nothing }
+        param2 = A.Param { pvar="g", ptyp=Just "*fieldElement" }
+        var1 = A.Var {v="h", idx=Just "i"}
+        var2 = A.Var {v="f", idx=Just "i"}
+        exp = A.AssignExp { var=var1,
+                            aexp=A.MinusExp(var2),
+                            aoper=Nothing}
+        body' = A.RangeExp  { rvar=A.Var{v="i", idx=Nothing},
+                              rangevar=A.Var{v="h", idx=Nothing},
+                              rloop=exp }
+    in A.FunctionDec  { fd="feNeg",
+                        params=[param1, param2],
+                        result=Nothing,
+                        body=body' }
+
 -----------------------------------
 --                               --
 --        gen_feFromBytes        --
 --                               --
 -----------------------------------
 
-  gen_feFromBytes :: Params -> A.Dec
+  gen_feFromBytes :: P.Params -> A.Dec
   gen_feFromBytes p =
     let le = len p
         param1 = A.Param { pvar="dst", ptyp=Just "*fieldElement" }
@@ -356,15 +433,30 @@ module Gen where
     if (cur < 0)
     then error ("error in gen_feFromBytes_save: negative length?")
     else  let cur' = len - cur
-              a = A.TypeCastExp { tcvar=A.Var{v=("h"++(show cur')),
-                                              idx=Nothing },
+              a = A.TypeCastExp { tcexp=A.VarExp A.Var{ v=("h"++(show cur')),
+                                                        idx=Nothing },
                                   tctyp="int32" }
               e = A.AssignExp { var=A.Var{v="dst", idx=Just (show cur')},
                                 aexp=a,
                                 aoper=Nothing}
           in e : (gen_feFromBytes_save' len (cur-1))
 
+-----------------------------------
+--                               --
+--         gen_feToBytes         --
+--                               --
+-----------------------------------
 
+-- TODO
+  gen_feToBytes :: P.Params -> A.Dec
+  gen_feToBytes p =
+    let param1 = A.Param { pvar="s", ptyp=Just "*[32]byte" }
+        param2 = A.Param { pvar="h", ptyp=Just "*fieldElement" }
+        v = A.NewLineExp
+    in A.FunctionDec {fd = "feToBytes",
+                      params=[param1, param2],
+                      result=Nothing,
+                      body=v }
 
 -----------------------------------
 --                               --

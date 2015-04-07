@@ -16,7 +16,7 @@ module Absyn where
      | OpExp {left :: Exp, oper :: Oper, right :: Exp}
      | SeqExp [Exp]
      | AssignExp {var :: Var, aexp :: Exp, aoper :: Maybe Oper}
-     | TypeCastExp {tcvar :: Var, tctyp :: String}
+     | TypeCastExp {tcexp :: Exp, tctyp :: String}
      | RangeExp {rvar :: Var, rangevar :: Var, rloop :: Exp}
      | ForExp {fvar :: Var, lo :: Exp, hi :: Exp, finit :: Exp, floop :: Exp}
      | VarDecExp {vd :: [Var], typ :: String}
