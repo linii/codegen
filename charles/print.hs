@@ -1,3 +1,5 @@
+-- pretty print module
+
 module Print where
 
   import Absyn as A
@@ -65,6 +67,7 @@ module Print where
       A.VarDecExp {vd=vs, typ=t} -> "var " ++ printArgs vs ++ " " ++ t
       A.ParenExp a -> "(" ++ printExp a ++ ")"
       A.ReturnExp a -> "return " ++ printExp a
+      A.NewLineExp -> ""
 
   printVar :: A.Var -> String
   printVar var =

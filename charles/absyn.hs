@@ -1,3 +1,7 @@
+-- abstract syntax module
+-- specifies a subset of the abstract syntax of Go
+-- rather hacky but it works
+
 module Absyn where
 
   data Prog = Prog [Dec]
@@ -18,9 +22,11 @@ module Absyn where
      | VarDecExp {vd :: [Var], typ :: String}
      | ParenExp (Exp)
      | ReturnExp (Exp)
+     | NewLineExp
 
   data Dec
-     = FunctionDec {fd :: String, params :: [Param], result :: Maybe String, body :: Exp} 
+     = FunctionDec {fd :: String, params :: [Param], 
+                    result :: Maybe String, body :: Exp} 
     -- TypeDec only used once, e.g. fieldElement [10]int32
      | TypeDec {td :: String, ty :: String, size :: Int}
      | ImportDec {id :: String}
