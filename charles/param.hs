@@ -16,7 +16,7 @@ module Param where
   -- currently harcoded for ed25519
   -- the prime is encoded as 2^base + sign * offeset
   -- rep is a least-to-most significant breakdown of how to represent
-  -- elements in the field
+  -- elements in the field (this might be the hardest part)
   -- length is just the number of elements in rep
 
   -- we assume that the sign is always negative for now

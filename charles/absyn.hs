@@ -20,6 +20,7 @@ module Absyn where
      | RangeExp {rvar :: Var, rangevar :: Var, rloop :: Exp}
      | ForExp {fvar :: Var, lo :: Exp, hi :: Exp, finit :: Exp, floop :: Exp}
      | VarDecExp {vd :: [Var], typ :: String}
+     | InitExp {ivar :: Var, iexp :: Exp}
      | ParenExp (Exp)
      | ReturnExp (Exp)
      | NewLineExp

@@ -58,6 +58,8 @@ module Print where
             Just x -> printOp x 
             Nothing -> "") 
           ++ "= " ++ printExp e
+      A.InitExp {ivar=v, iexp=e} ->
+        printVar v ++ " " ++ ":= " ++ printExp e
       A.TypeCastExp {tcexp=e, tctyp=t} ->
         t ++ "(" ++ printExp e ++ ")"
       A.RangeExp {rvar=f, rangevar=r, rloop=b} ->
