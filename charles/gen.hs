@@ -1078,16 +1078,45 @@ module Gen where
 -----------------------------------
 
 -- TODO
+-- basically the same as gen_feSquare
   gen_feSquare2 :: P.Params -> A.Dec
   gen_feSquare2 p =
-    let param1 = A.Param { pvar="h", ptyp=Nothing }
-        param2 = A.Param { pvar="f", ptyp=Just "*fieldElement" }
-        v = A.NewLineExp
+    let var_in       = "f"
+        var_out      = "h"
+        param1       = A.Param { pvar=var_out, ptyp=Nothing }
+        param2       = A.Param { pvar=var_in, ptyp=Just "*fieldElement" }
+        v1           = reverse (gen_feMul_load var_in (len p))
+        os           = reverse (scanr1 (+) (rep p))
+        os'          = [n - (os !! 0) | n <- os]
+        ra           = reverse (gen_feMul_repeq (base p) os' os' (os' ++ os'))
+        ca           = gen_feSquare_coeff ra (len p) (offset p) 0
+        moa          = gen_feSquare_min_off (gen_feSquare_reindex ca) 0 (len p)
+        rca          = gen_feSquare_red_coeff ca moa
+        pca          = gen_feSquare_precomp_coeff (gen_feSquare_reindex rca)
+        init         = gen_feSquare_init (len p)
+        (da, v4, v5) = gen_feSquare_sums ca moa pca init [] [] var_in (len p) 0
+        v2           = gen_feSquare_init_coeff var_in da 0
+        v3           = gen_feSquare_init_off var_in moa 0
+        v6           = A.VarDecExp { vd=[A.Var {v="carry", idx=Nothing}], 
+                                     typ=("[" ++ show (len p) ++ "]int64") }
+        v7           = reverse (gen_feSquare_double var_out (len p))
+        v8           = reverse (gen_feMul_save var_out (len p))
     in A.FunctionDec {fd = "feSquare2",
                       params=[param1, param2],
                       result=Nothing,
-                      body=v }
+                      body=A.SeqExp(v1  ++ v2 ++ v3 ++ v4 ++ (reverse v5)
+                                        ++ [v6] ++ v7 ++ v8) }
 
+  gen_feSquare_double :: String -> Int -> [A.Exp]
+  gen_feSquare_double v_out 0 = []
+  gen_feSquare_double v_out idx =
+    let var_out = A.Var { v=(v_out ++ (show (idx-1))),
+                      idx=Nothing }
+        h       = AssignExp { var=var_out,
+                              aexp=A.VarExp var_out, 
+                              aoper=Just A.PlusOp }
+        t       = gen_feSquare_double v_out (idx-1)
+    in h : t
 -----------------------------------
 --                               --
 --          gen_feInvert         --
