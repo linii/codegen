@@ -69,6 +69,7 @@ module Print where
       A.VarDecExp {vd=vs, typ=t} -> "var " ++ printArgs vs ++ " " ++ t
       A.ParenExp a -> "(" ++ printExp a ++ ")"
       A.ReturnExp a -> "return " ++ printExp a
+      A.CommentExp s -> "// " ++ s
       A.NewLineExp -> ""
 
   printVar :: A.Var -> String

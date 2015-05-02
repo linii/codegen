@@ -24,6 +24,7 @@ module Absyn where
      | ParenExp (Exp)
      | ReturnExp (Exp)
      | NewLineExp
+     | CommentExp (String)
 
   data Dec
      = FunctionDec {fd :: String, params :: [Param], 

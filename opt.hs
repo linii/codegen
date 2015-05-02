@@ -1,5 +1,5 @@
 -- opt module
--- a couple different optimizations on an AST
+-- a couple post optimizations that make the Gen module easier
 -- see comments before function for further assumptions on structure
 
 module Opt where
@@ -18,7 +18,6 @@ module Opt where
 -- sometimes an optimization may end up precomputing an unneeded value
 -- prune removes computations that aren't used
 -- input is basic blocks
--- TODO: change error to adding a comment, don't stop compilation
   prune :: Bool -> [[A.Exp]] -> [A.Param] -> [A.Exp]
   prune o a b =
     if o
@@ -29,9 +28,10 @@ module Opt where
           (_, l) = partition (`elem` p) u
       in (if (l == [])
           then e
-          else error ("Opt.prune: one or more variables in list [" 
-                      ++ (intercalate ", " l)
-                      ++ "] might not have been defined"))
+          else (let c = A.CommentExp ("Opt.prune: one or more variables in list [" 
+                        ++ (intercalate ", " l)
+                        ++ "] might not have been defined")
+                in c : e ))
     else concat a
 
 -- takes a list of expressions and uses seen thus far
