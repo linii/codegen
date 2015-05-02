@@ -38,3 +38,13 @@ module Absyn where
             | AndOp | OrOp | ExOrOp | LShiftOp | RShiftOp
 
   data Param = Param {pvar :: String, ptyp :: Maybe String}
+
+  veq :: Var -> Var -> Bool 
+  veq v1 v2 = 
+    let a = ((v v1) == (v v2))
+        b = case (idx v1, idx v2) of
+              (Just s1, Just s2) -> (s1 == s2)
+              (Nothing, Nothing) -> True
+              (_, _) -> False
+    in a && b
+

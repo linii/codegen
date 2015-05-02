@@ -4,6 +4,7 @@ module Gen where
 
   import Absyn as A
   import Param as P
+  import Opt as O
   import Data.List
 
   genAbsyn :: String -> A.Prog
@@ -332,8 +333,8 @@ module Gen where
                           typ="[" ++ show le ++ "]int64"}
         v1 = s1 ++ [A.NewLineExp, s2, A.NewLineExp]
 
-        l = chop (le - 1) ((rep p) ++ (rep p))
-        n = chop (le - 1) ([0..le-1] ++ [0..le-1])
+        l = drop (le - 1) ((rep p) ++ (rep p))
+        n = drop (le - 1) ([0..le-1] ++ [0..le-1])
         l1 = accumOdds le l
         n1 = accumOdds le n 
         l2 = accumEvens le l
@@ -484,6 +485,7 @@ module Gen where
 
 -- TODO: generate carry logic
 --       need to guarantee that the precomputations fit into int32s
+--       should probably adapt feSquare's code for this - more general
 --
 -- Assertions: the schoolbook multiplication must not "underflow"
 -- That is, we have the following situation:
@@ -550,16 +552,17 @@ module Gen where
         a'      = reverse (a)
         v4      = gen_feMul_precomp_rep var_in1 a 0
         v5      = gen_feMul_precomp_pairs var_in1 var_in2 0 (len p) (offset p) a
+        v5'     = O.schedule (opt p) v5
         v6      = gen_feMul_sums var_out 0 (len p) (offset p) var_in1 var_in2 a'
         v7      = A.VarDecExp { vd=[A.Var {v="carry", idx=Nothing}], 
                                 typ=("[" ++ show (len p) ++ "]int64") }
         v8      = gen_feMul_carry
         v9      = reverse (gen_feMul_save var_out (len p))
+        v       = O.prune (opt p) [v1, v2, v3, v4, v5', v6, [v7], v8, v9] [param1, param2, param3]
     in A.FunctionDec {fd = "feMul",
                       params=[param1, param2, param3],
                       result=Nothing,
-                      body=A.SeqExp(v1 ++ v2 ++ v3 ++ v4 ++ v5 ++ v6 
-                                       ++ [v7] ++ v8 ++ v9) }
+                      body=A.SeqExp v }
 
   gen_feMul_load :: String -> Int -> [A.Exp]
   gen_feMul_load _ 0 = []
@@ -773,16 +776,17 @@ module Gen where
         pca          = gen_feSquare_precomp_coeff (gen_feSquare_reindex rca)
         init         = gen_feSquare_init (len p)
         (da, v4, v5) = gen_feSquare_sums ca moa pca init [] [] var_in (len p) 0
+        v4'          = O.schedule (opt p) v4
         v2           = gen_feSquare_init_coeff var_in da 0
         v3           = gen_feSquare_init_off var_in moa 0
         v6           = A.VarDecExp { vd=[A.Var {v="carry", idx=Nothing}], 
                                      typ=("[" ++ show (len p) ++ "]int64") }
         v7           = reverse (gen_feMul_save var_out (len p))
+        v            = O.prune (opt p) [v1, v2, v3, v4, (reverse v5), [v6], v7] [param1, param2]
     in A.FunctionDec {fd = "feSquare",
                       params=[param1, param2],
                       result=Nothing,
-                      body=A.SeqExp(v1  ++ v2 ++ v3 ++ v4 ++ (reverse v5)
-                                        ++ [v6] ++ v7) }
+                      body=A.SeqExp v }
 
 -- Generates the coefficients needed for h[i]
 -- First index is by h, second index is by the first of the input pair
@@ -862,7 +866,7 @@ module Gen where
             then a `div` b
             else a
      in h : t
-  gen_feSquare_red_coeff' _ _ = fail "gen_feSquare_red_coeff length mismatch"
+  gen_feSquare_red_coeff' _ _ = error "Gen.gen_feSquare_red_coeff: length mismatch"
 
 -- Generates a first-pass list of precomputations for each element
   gen_feSquare_precomp_coeff :: [[Int]] -> [Int]
@@ -928,7 +932,6 @@ module Gen where
 -- outputs: an array of precomputations needed, indexed by the block
 --          an array of pair products
 --          an array of the sums
--- note: everything is indexed backward, i.e. it goes h[s-1], ... , h[1], h[0]
   gen_feSquare_sums :: [[Int]] -> [Int] -> [Int] -> [[Int]] -> [A.Exp] 
     -> [A.Exp] -> String -> Int -> Int -> ([[Int]], [A.Exp], [A.Exp])
   gen_feSquare_sums [] _ _ a b c _ _ _ = (a,b,c)
@@ -939,6 +942,7 @@ module Gen where
                           iexp=(A.SeqExp (sum)) }
     in gen_feSquare_sums as offsets coeff precomp' pairprod' (exp : sums) var_in len (idx+1)
 
+-- Possibly the worst code I've written. I'm sorry.
   gen_feSquare_sums' :: [Int] -> [Int] -> [Int] -> [[Int]] -> [A.Exp] 
     -> [A.Exp] -> Int -> String -> Int -> Int -> ([[Int]], [A.Exp], [A.Exp])
   gen_feSquare_sums' [] _ _ a b c _ _ _ _ = (a,b,c)
@@ -956,8 +960,11 @@ module Gen where
                      off      = if (o > 1)
                                 then "_" ++ (show o)
                                 else ""
-                     coef     = if (a > 1)
+                     coef     = if (a > 1 && (a `div` o) > 1)
                                 then "_" ++ (show (a `div` o))
+                                else ""
+                     c''      = if (a > 1)
+                                then "_" ++ show(a)
                                 else ""
                      ps''     = appendnth ps' i' (a `div` o)
                      l        = A.TypeCastExp { tcexp=A.VarExp A.Var {v=(var_in ++ (show i') ++ coef), idx=Nothing},
@@ -967,12 +974,9 @@ module Gen where
                      ppentry  = A.OpExp { left=l,
                                           oper=A.TimesOp,
                                           right=r }
-                     ppentry' = A.InitExp { ivar = A.Var { v=(var_in ++ (show i') ++ var_in ++ (show i) ++ "_" ++ (show a)),
+                     ppentry' = A.InitExp { ivar = A.Var { v=(var_in ++ (show i') ++ var_in ++ (show i) ++ c''),
                                                            idx=Nothing},
                                             iexp = ppentry }
-                     c''      = if (a > 1)
-                                then "_" ++ show(a)
-                                else ""
                      sumentry = A.VarExp A.Var { v=(var_in ++ (show i') ++ var_in ++ show(i) ++ c''),
                                                  idx=Nothing }
                      sumentry' = if (null sums')
@@ -1020,7 +1024,7 @@ module Gen where
                           ppentry' = A.InitExp { ivar = A.Var {v=(var_in ++ (show i') ++ var_in ++ (show i) ++ "_" ++ (show a)),
                                                                idx=Nothing },
                                                  iexp = ppentry }
-                          sumentry = A.VarExp A.Var { v=(var_in ++ (show i') ++ var_in ++ (show i) ++ "_" ++ show(a)),
+                          sumentry = A.VarExp A.Var { v=(var_in ++ (show i') ++ var_in ++ (show i) ++ "_" ++ (show a)),
                                                  idx=Nothing }
                           sumentry' = if (null sums')
                                       then sumentry
@@ -1043,7 +1047,7 @@ module Gen where
   gen_feSquare_init_coeff' _ [] = []
   gen_feSquare_init_coeff' va (a:as) =
     let t = gen_feSquare_init_coeff' va as
-        vr = A.Var { v=(va ++ "_" ++ show(a)),
+        vr = A.Var { v=(va ++ "_" ++ (show a)),
                             idx=Nothing }
         r  = A.OpExp { left=A.IntExp(a),
                                oper=A.TimesOp,
@@ -1077,7 +1081,7 @@ module Gen where
 --                               --
 -----------------------------------
 
--- TODO
+-- TODO: verify things fit, carry logic
 -- basically the same as gen_feSquare
   gen_feSquare2 :: P.Params -> A.Dec
   gen_feSquare2 p =
@@ -1095,17 +1099,18 @@ module Gen where
         pca          = gen_feSquare_precomp_coeff (gen_feSquare_reindex rca)
         init         = gen_feSquare_init (len p)
         (da, v4, v5) = gen_feSquare_sums ca moa pca init [] [] var_in (len p) 0
+        v4'          = O.schedule (opt p) v4
         v2           = gen_feSquare_init_coeff var_in da 0
         v3           = gen_feSquare_init_off var_in moa 0
         v6           = A.VarDecExp { vd=[A.Var {v="carry", idx=Nothing}], 
                                      typ=("[" ++ show (len p) ++ "]int64") }
         v7           = reverse (gen_feSquare_double var_out (len p))
         v8           = reverse (gen_feMul_save var_out (len p))
+        v            = O.prune (opt p) [v1, v2, v3, v4', (reverse v5), [v6], v7, v8] [param1, param2]
     in A.FunctionDec {fd = "feSquare2",
                       params=[param1, param2],
                       result=Nothing,
-                      body=A.SeqExp(v1  ++ v2 ++ v3 ++ v4 ++ (reverse v5)
-                                        ++ [v6] ++ v7 ++ v8) }
+                      body=A.SeqExp v}
 
   gen_feSquare_double :: String -> Int -> [A.Exp]
   gen_feSquare_double v_out 0 = []
@@ -1117,6 +1122,7 @@ module Gen where
                               aoper=Just A.PlusOp }
         t       = gen_feSquare_double v_out (idx-1)
     in h : t
+
 -----------------------------------
 --                               --
 --          gen_feInvert         --
@@ -1156,12 +1162,6 @@ module Gen where
 --            helpers            --
 --                               --
 -----------------------------------
-
-  -- chops off the first Int elements of list [a]
-  chop :: Int -> [a] -> [a]
-  chop 0 xs = xs
-  chop n (x:xs) = chop (n-1) xs
-  chop _ [] = error "requested chop is longer than length of list"
 
   -- gets the odd terms in the first len elements of list [a]
   accumOdds :: Int -> [a] -> [a]
