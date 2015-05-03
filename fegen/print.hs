@@ -65,7 +65,9 @@ module Print where
       A.RangeExp {rvar=f, rangevar=r, rloop=b} ->
         "for " ++ v f ++ " := range " 
           ++ v r ++ " {\n  " ++ printExp b ++ "\n}"
-      A.ForExp {fvar=f, lo=l, hi=h, finit=i, floop=b} -> ""
+      A.ForExp {fvar=va, cond=c, inc=i, finit=f, floop=b} ->
+        "for " ++ v va ++ " = " ++ printExp f ++ "; " ++ printExp c 
+               ++ "; " ++ printExp i ++ " {\n  " ++ printExp b ++ "\n}"
       A.VarDecExp {vd=vs, typ=t} -> "var " ++ printArgs vs ++ " " ++ t
       A.ParenExp a -> "(" ++ printExp a ++ ")"
       A.ReturnExp a -> "return " ++ printExp a

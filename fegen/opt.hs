@@ -22,12 +22,14 @@ module Opt where
   prune o a b =
     if o
     then
-      let p      = map pvar b
-          a'     = linearize (concat a)
-          (e, u) = prune' a' (map pvar b)
-          (_, l) = partition (`elem` p) u
-      in (if (l == [])
-          then e
+      let p         = map pvar b
+          a'        = linearize (concat a)
+          (e, u, t) = prune' a' p
+          (_, l)    = partition (`elem` p) u
+      in (if (null l)
+          then (if t
+                then prune o [e] b
+                else e)
           else (let c = A.CommentExp ("Opt.prune: one or more variables in list [" 
                         ++ (intercalate ", " l)
                         ++ "] might not have been defined")
@@ -40,31 +42,35 @@ module Opt where
 -- if it does, then delete the later use
 -- if it doesn't, then delete the current expression
 -- assumes no side effects
-  prune' :: [A.Exp] -> [String] -> ([A.Exp], [String])
-  prune' [] u = ([], u)
+  prune' :: [A.Exp] -> [String] -> ([A.Exp], [String], Bool)
+  prune' [] u = ([], u, False)
   prune' (a:as) u =
-    let (a1, u1)  = prune' as u
-        (u2, d)   = exp_to_use_def a
-        (_, p2)   = partition (`elem` d) u1
-        d'       = map (takeWhile (/= '[')) d
-        (p1, _)   = partition (`elem` d') u1
-        a2        = if (p1 == [])
-                    then a1
-                    else a:a1
+    let (a1, u1, t)  = prune' as u
+        (u2, d)      = exp_to_use_def a
+        (_, p2)      = partition (`elem` d) u1
+        d'           = map (takeWhile (/= '[')) d
+        (p1, _)      = partition (`elem` d') u1
+        (a2, t'')    = if (null p1)
+                       then (a1, True)
+                       else (a:a1, False)
     in  case a of 
           A.RangeExp {rvar=f, rangevar=r, rloop=b} ->
-            let p = v f
-                b' = linearize [b]
-                (b'', u) = prune' b' [p]
-                e = A.RangeExp {rvar=f, rangevar=r, rloop=A.SeqExp b''}
-            in (e: a1, u ++ u1)
-          A.ForExp {fvar=f, lo=l, hi=h, finit=i, floop=b} ->
-            let p = v f
-                b' = linearize [b]
-                (b'', u) = prune' b' [p]
-                e = A.ForExp {fvar=f, lo=l, hi=h, finit=i, floop=A.SeqExp b''}
-            in (e: a1, u ++ u1)
-          _ -> (a2, p2 ++ u2)
+            let p             = v f
+                b'            = linearize [b]
+                (b'', u, t')  = prune' b' [p]
+                (e, t'')      = if (null b'')
+                                then (a1, True)
+                                else ((A.RangeExp {rvar=f, rangevar=r, rloop=A.SeqExp b''}):a1, False)
+            in (e, u ++ u1, t'' || t' || t)
+          A.ForExp {fvar=f, cond=c, inc=n, finit=i, floop=b} ->
+            let p             = v f
+                b'            = linearize [b]
+                (b'', u, t')  = prune' b' [p]
+                (e, t'')      = if (null b'')
+                                then (a1, True)
+                                else ((A.ForExp {fvar=f, cond=c, inc=n, finit=i, floop=A.SeqExp b''}):a1, False)
+            in (e, u ++ u1, t'' || t' || t)
+          _ -> (a2, p2 ++ u2, t || t'')
 
 -- linearizes a bunch of expressions
 -- in particular, unpacks seqExps
@@ -154,16 +160,21 @@ module Opt where
   unwrap_src :: [A.Exp] -> [(A.Exp, (A.Var, A.Var))] -> [(A.Exp, (A.Var, A.Var))]
   unwrap_src [] p = p
   unwrap_src (a:as) p =
-    let b = case a of
+    let b = (case a of
               A.InitExp {ivar=_, iexp=e} -> (
                 case e of 
                   A.OpExp {left=l, oper=_, right=r} -> (
-                      case (l, r) of
-                        (A.TypeCastExp {tcexp=A.VarExp(l'),tctyp=_}, 
-                         A.TypeCastExp {tcexp=A.VarExp(r'),tctyp=_}) -> (l', r')
-                        (_, _) -> (error "Opt.unwrap_src: non vars in binop"))
+                      let l' = (case l of
+                                 A.TypeCastExp {tcexp=A.VarExp(x),tctyp=_} -> x
+                                 A.VarExp x -> x
+                                 _ -> error "Opt.unwrap_src: non vars in binop")
+                          r' = (case r of
+                                 A.TypeCastExp {tcexp=A.VarExp(x),tctyp=_} -> x
+                                 A.VarExp x -> x
+                                 _ -> error "Opt.unwrap_src: non vars in binop")
+                      in (l', r'))
                   _ -> (error "Opt.unwrap_src: non binop exp"))
-              _ -> (error "Opt.unwrap_src: non assign exp")
+              _ -> (error "Opt.unwrap_src: non assign exp"))
         t = unwrap_src as p
     in (a,b):t
 

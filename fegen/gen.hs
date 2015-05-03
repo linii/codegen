@@ -83,7 +83,7 @@ module Gen where
     let param1 = A.Param { pvar="dst", ptyp=Nothing }
         param2 = A.Param { pvar="a", ptyp=Nothing }
         param3 = A.Param { pvar="b",
-                          ptyp=Just "*fieldElement" }
+                           ptyp=Just "*fieldElement" }
         var1 = A.Var {v="dst", idx=Just "i"}
         var2 = A.Var {v="a", idx=Just "i"}
         var3 = A.Var {v="b", idx=Just "i"}
