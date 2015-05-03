@@ -22,8 +22,6 @@ module Test where
              gen_prune2 o,
              gen_prune3 o,
              gen_schedule1 o ]
-             --gen_schedule2 o,
-             --gen_schedule3 o ]
 
   gen_prune1 :: Bool -> A.Dec
   gen_prune1 o = 
