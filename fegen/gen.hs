@@ -21,7 +21,7 @@ module Gen where
                 gen_feCMove,
                 gen_load3,
                 gen_load4,
-                gen_feFromBytes p,
+                --gen_feFromBytes p,
                 gen_feToBytes p,
                 gen_feIsNegative,
                 gen_feIsNonZero,
@@ -546,14 +546,13 @@ module Gen where
         v1      = reverse (gen_feMul_load var_in1 (len p))
         v2      = reverse (gen_feMul_load var_in2 (len p))
         v3      = reverse (gen_feMul_precomp_offset var_in2 (offset p) (len p))
-        os      = reverse (scanr1 (+) (rep p))
-        os'     = [n - (os !! 0) | n <- os]
-        a       = gen_feMul_repeq (base p) os' os' (os' ++ os')
-        a'      = reverse (a)
-        v4      = gen_feMul_precomp_rep var_in1 a 0
-        v5      = gen_feMul_precomp_pairs var_in1 var_in2 0 (len p) (offset p) a
+        os      = scanl1 (+) (rep p)
+        os'     = 0 : reverse (tail (reverse os))
+        ra      = gen_feMul_repeq (base p) os' os' (os' ++ os')
+        v4      = gen_feMul_precomp_rep var_in1 ra 0
+        v5      = gen_feMul_precomp_pairs var_in1 var_in2 0 (len p) (offset p) ra
         v5'     = O.schedule (opt p) v5
-        v6      = gen_feMul_sums var_out 0 (len p) (offset p) var_in1 var_in2 a'
+        v6      = gen_feMul_sums var_out 0 (len p) (offset p) var_in1 var_in2 ra
         v7      = A.VarDecExp { vd=[A.Var {v="carry", idx=Nothing}], 
                                 typ=("[" ++ show (len p) ++ "]int64") }
         v8      = gen_feMul_carry
@@ -668,31 +667,31 @@ module Gen where
 
   gen_feMul_sums :: String -> Int -> Int -> Int -> String -> String -> [[Int]] -> [A.Exp]
   gen_feMul_sums _ _ _ _ _ _ [] = []
-  gen_feMul_sums out outidx len offset in1 in2 (a:as) = 
+  gen_feMul_sums out outidx len offset in1 in2 as = 
     if (outidx >= len)
     then []
     else let t  = gen_feMul_sums out (outidx+1) len offset in1 in2 as
-             a' = drop outidx (a++a)
-             h  = gen_feMul_sums' (out ++ (show outidx)) outidx len offset in1 in2 a'
+             h  = gen_feMul_sums' (out ++ (show outidx)) outidx len offset in1 in2 as
          in h : t
   
-  gen_feMul_sums' :: String -> Int -> Int -> Int -> String -> String -> [Int] -> A.Exp
-  gen_feMul_sums' out outidx len offset in1 in2 a =
+  gen_feMul_sums' :: String -> Int -> Int -> Int -> String -> String -> [[Int]] -> A.Exp
+  gen_feMul_sums' out outidx len offset in1 in2 as =
     let lval = A.Var { v=out, idx=Nothing }
-        e    = gen_feMul_sums'' len offset in1 0 in2 outidx a
+        e    = gen_feMul_sums'' len offset in1 0 in2 outidx as
      in A.InitExp { ivar=lval, iexp=e }
 
-  gen_feMul_sums'' :: Int -> Int -> String -> Int -> String -> Int -> [Int] -> A.Exp
+  gen_feMul_sums'' :: Int -> Int -> String -> Int -> String -> Int -> [[Int]] -> A.Exp
   gen_feMul_sums'' _ _ _ _ _ _ [] = A.NewLineExp
   gen_feMul_sums'' len offset in1 in1idx in2 in2idx (a:as) =
     let in2idx' = (in2idx + len) `mod` len
+        a'      = head (drop in2idx' a)
         s       = if (in2idx < 0)
                   then offset
                   else 1
-        a'      = s * (2^a)
-        sub     = if (a' == 1)
+        a''     = s * (2^a')
+        sub     = if (a'' == 1)
                   then ""
-                  else "_" ++ (show a')
+                  else "_" ++ (show a'')
         v'      = in1 ++ (show in1idx) ++ in2 ++ (show in2idx') ++ sub
         h       = A.VarExp A.Var { v=v', idx=Nothing }
     in if (len <= (in1idx + 1))
@@ -767,10 +766,11 @@ module Gen where
         param1       = A.Param { pvar=var_out, ptyp=Nothing }
         param2       = A.Param { pvar=var_in, ptyp=Just "*fieldElement" }
         v1           = reverse (gen_feMul_load var_in (len p))
-        os           = reverse (scanr1 (+) (rep p))
-        os'          = [n - (os !! 0) | n <- os]
-        ra           = reverse (gen_feMul_repeq (base p) os' os' (os' ++ os'))
-        ca           = gen_feSquare_coeff ra (len p) (offset p) 0
+        os           = scanl1 (+) (rep p)
+        os'          = 0 : reverse (tail (reverse os))
+        ra           = gen_feMul_repeq (base p) os' os' (os' ++ os')
+        ra'          = gen_feSquare_newindex ra (len p) 0
+        ca           = gen_feSquare_coeff ra' (len p) (offset p) 0
         moa          = gen_feSquare_min_off (gen_feSquare_reindex ca) 0 (len p)
         rca          = gen_feSquare_red_coeff ca moa
         pca          = gen_feSquare_precomp_coeff (gen_feSquare_reindex rca)
@@ -782,7 +782,7 @@ module Gen where
         v6           = A.VarDecExp { vd=[A.Var {v="carry", idx=Nothing}], 
                                      typ=("[" ++ show (len p) ++ "]int64") }
         v7           = reverse (gen_feMul_save var_out (len p))
-        v            = O.prune (opt p) [v1, v2, v3, v4, (reverse v5), [v6], v7] [param1, param2]
+        v            = O.prune (opt p) [v1, v2, v3, v4', (reverse v5), [v6], v7] [param1, param2]
     in A.FunctionDec {fd = "feSquare",
                       params=[param1, param2],
                       result=Nothing,
@@ -815,6 +815,32 @@ module Gen where
                else 1
         h    = m * m' * m'' * (2^a)
     in h : t
+
+-- We have list of lists where it is something like this:
+-- [[f0g0, f0g1, f0g2],
+--  [f1g0, f1g1, f1g2],
+--  [f2g0, f2g1, f2g2]]
+-- and we would like to transform the list into
+-- [[f0g0, f1g2, f2g1],
+--  [f0g1, f1g0, f2g2],
+--  [f0g2, f1g1, f2g0]]
+-- i.e. the sum of the indices in the nth list all equal to n (mod len),
+-- with each list indexed by increasing f's index
+  gen_feSquare_newindex :: [[Int]] -> Int -> Int -> [[Int]]
+  gen_feSquare_newindex as len idx =
+    if (idx >= len)
+    then []
+    else let t = gen_feSquare_newindex as len (idx+1)
+             h = gen_feSquare_newindex' as len idx
+         in h:t
+
+  gen_feSquare_newindex' :: [[Int]] -> Int -> Int -> [Int]
+  gen_feSquare_newindex' [] _ _ = []
+  gen_feSquare_newindex' (a:as) len idx =
+    let idx' = idx `mod` len
+        h    = head (drop idx' a)
+        t    = gen_feSquare_newindex' as len (idx-1)
+    in h:t
 
 -- Takes a list of lists and reindexes, i.e. [[1,2],[3,4]] -> [[1,3],[2,4]]
   gen_feSquare_reindex :: [[Int]] -> [[Int]]
@@ -1090,10 +1116,11 @@ module Gen where
         param1       = A.Param { pvar=var_out, ptyp=Nothing }
         param2       = A.Param { pvar=var_in, ptyp=Just "*fieldElement" }
         v1           = reverse (gen_feMul_load var_in (len p))
-        os           = reverse (scanr1 (+) (rep p))
-        os'          = [n - (os !! 0) | n <- os]
-        ra           = reverse (gen_feMul_repeq (base p) os' os' (os' ++ os'))
-        ca           = gen_feSquare_coeff ra (len p) (offset p) 0
+        os           = scanl1 (+) (rep p)
+        os'          = 0 : reverse (tail (reverse os))
+        ra           = gen_feMul_repeq (base p) os' os' (os' ++ os')
+        ra'          = gen_feSquare_newindex ra (len p) 0
+        ca           = gen_feSquare_coeff ra' (len p) (offset p) 0
         moa          = gen_feSquare_min_off (gen_feSquare_reindex ca) 0 (len p)
         rca          = gen_feSquare_red_coeff ca moa
         pca          = gen_feSquare_precomp_coeff (gen_feSquare_reindex rca)

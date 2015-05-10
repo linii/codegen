@@ -39,7 +39,6 @@ module Opt where
 -- takes a list of expressions and uses seen thus far
 -- and returns (list of expressions, uses)
 -- where you check to see if the current def had a use after it
--- if it does, then delete the later use
 -- if it doesn't, then delete the current expression
 -- assumes no side effects
   prune' :: [A.Exp] -> [String] -> ([A.Exp], [String], Bool)
@@ -51,9 +50,12 @@ module Opt where
         d'           = map (takeWhile (/= '[')) d
         (p1, _)      = partition (`elem` d') u1
         (a2, t'')    = if (null p1)
-                       then (a1, True)
+                       -- then (a1, True)
+                       then  (a1, True)
                        else (a:a1, False)
     in  case a of 
+          A.CommentExp _ -> (a:a1, u1, t)
+          A.NewLineExp -> (a:a1, u1, t)
           A.RangeExp {rvar=f, rangevar=r, rloop=b} ->
             let p             = v f
                 b'            = linearize [b]
@@ -73,16 +75,13 @@ module Opt where
           _ -> (a2, p2 ++ u2, t || t'')
 
 -- linearizes a bunch of expressions
--- in particular, unpacks seqExps
+-- i.e. unpacks seqExps
   linearize :: [A.Exp] -> [A.Exp]
   linearize [] = []
   linearize (a:as) =
     let as' = linearize as
         a'  = case a of
-                A.SeqExp s -> 
-                  case s of
-                    []    -> []
-                    x:xs  -> x:(linearize [A.SeqExp xs])
+                A.SeqExp s -> linearize s
                 _ -> [a]
     in a' ++ as'
 
