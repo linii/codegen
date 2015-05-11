@@ -228,9 +228,7 @@ AST, and comparing fegenopt.go and fegenunopt.go gives you a much more
 complicated (real-world!) test case.
 
 There is also another, much easier prime that makes manual inspection a lot less
-tedious - try
-1   *Main> fegen "7619"
-which corresponds to the prime 2^76-19.
+tedious - try inputing "7615", which corresponds to the prime 2^76-15.
 
 Versions/Dependencies
 ================================================================================
