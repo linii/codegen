@@ -184,22 +184,31 @@ however, we might be able to do
 
 HOW TO USE
 ================================================================================
-1   > ghci
-2   Prelude> :l main
-3   *Main> fegen "25519"
-4   *Main> fegen "25519 -u"
 
-(2) all the modules are in main, so that is the only one you need to load
-(3) fegen is a wrapper function that generates all the code
-(4) currently, the only parameter it accepts is a flag that turns off post-
-optimizations, so either -u or --unopt will give you semi-unoptimized code.
+Script
+1   > runhaskell main
 
+Executable
+1   > ghc --make main
+
+In both the script and the executable, there are some relatively terse prompts.
+There are two preconfigured options - 25519 and 7615, corresponding 2^255-19 and
+2^76-15, respectively. If you don't want to use these options, then type any
+other key and you will be prompted for the base and offset, where the prime
+corresponds to 2^base - offset, and then representation, which is a series of
+block sizes delimited by spaces. For example, the representation for 2^76-15 is
+26 25 25, which corresponds to (f0 + 2^26*f1 + 2^51*f2), and f0 is 26 bits wide,
+f1 is 25 bits wide, and f2 is 25 bits wide, so that the internal representation
+for any element of this field is just [f0 f1 f2].
+
+Optimization Tests
 1   > ghci
 2   Prelude> :l test
 3   *Main> test
 4   *Main> test "-u"
 
-(2) again, I put all the necessary dependencies in the "test" module
+(1) Unforunately this is only available in interactive mode
+(2) I put all the necessary dependencies in the "test" module
 (3) this runs it with optimizations turned on
 (4) this runs it with optimizations turned off
 
