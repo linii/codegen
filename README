@@ -1,7 +1,229 @@
+README
+================================================================================
 Crypto CodeGen Haskell utility
 Yale DeDiS Group
 
 author: Charles Jin
 adviser: Bryan Ford
 
-actual documentation to follow...
+last updated: 5/10/2015
+
+ABSTRACT
+================================================================================
+A general characteristic of all modern cryptosystems is a dependence on the 
+ability to perform arithmetic operations modulo some large prime with crypto-
+graphically secure guarantees. This presents large opportunities for low-level
+optimizations of arithmetic over the underlying finite field, not just for per-
+formance, but also to prevent side-channel timing attacks, among other benefits
+accrued from essentially constant time operations. In particular, Dan Bern-
+stein's seminal work on Curve25519, and more recently Curve41417, demonstrates
+these methodologies. Unfortunately, these implementations exist only for fields
+for which people have written hand-tuned optimizations. This work attempts to
+remedy that shortcoming by providing a robust production-level automatic code
+generator for such cryptographic operations. The main problem arises from the
+fact that the underlying prime must be large enough to be computationally hard
+to break. In particular, this means that the field elements no longer fit in any
+standard representation, and must instead be broken up into a virtual array of
+machine words. Multiplication can then be done using standard schoolbook multi-
+plication. Further complications involve guaranteeing that no matter what kind
+of functions are called, no step incurs an overflow, regardless of input or the
+calling sequence. The implementation first produces an abstract syntax tree,
+then prints the tree to Go, with several optimization steps in between. The
+optimizations make aggressive use of the structure of operations to eliminate
+common subexpressions and precompute necessary values. A post-processing step
+linearizes the tree and reorders instructions to free up the CPU pipeline and
+reduce register traffic. For the particular choice of prime 2^255-19, the end
+result is actually no different from the Curve25519 Go implementation. This
+utility should eliminate a tedious and time-consuming part of any crypto pro-
+ject.
+
+CODE STRUCTURE
+================================================================================
+There are the following six modules:
+
+main.hs
+Contains wrapper stuff that calls the generate module and then the print module.
+Output is just printed to stdout.
+
+param.hs
+Transforms the input into parameters. Currently hardcoded for two primes (see
+HOW TO USE section).
+
+absyn.hs
+A very pared down abstract syntax for Go. In particular, no control flow - the
+generated code should have no jumps, and in certain cases when you do need to
+branch, the branch is simulated using bit operations (see gen_feCMove, which
+generates the function feCMove, for a conditional move operation).
+
+gen.hs
+The meat of the utility. Generates an abstract syntax tree for specified
+functions, given a set of parameters. Currently only proven to work for a
+hardcoded set of parameters.
+
+opt.hs
+Contains some post optimizations. In particular, does some instruction
+scheduling (more like suggestions for the later compiler), and also removes
+any unneeded precomputations that may have occured during the codegen phase.
+
+print.hs
+A pretty-print module that takes the AST and outputs syntactically
+correct Go code.
+
+OPTIMIZATIONS
+================================================================================
+There are currently three optimization techniques: dead code elimination, common
+subexpression elimination, and instruction scheduling. Unforunately, it turned
+out that I could produce much better CSE by incorporating it directly into
+the generate module, and it aggressively uses the particulars of the problem at
+hand (i.e., it is not standalone testable). The other two also rely heavily
+on certain assumptions that may not be realistic for holistic program analysis,
+but the code and test cases document this.
+
+First I will talk about dead code eliminiation (Opt.prune) and instruction
+scheduling (Opt.schedule). The general ideas are described before the functions
+in the Opt module.
+
+Prune basically looks for variables that aren't used after they are defined.
+This happens occasionally especially in the codegen because I may be a little
+over-aggressive in precomputations. The function iterates until it has found
+a fixed point (because the code is SSA, and relatively clean, the fixed point is
+usually found after one iteration)
+
+The effect on my current code is not too great, because I was pretty careful
+with only precomputing necessary things, but in the future, I can be a little
+less careful and just let the Opt module clean things up.
+
+Schedule tries to order a block of non-data-dependent SSA instructions in such
+a way to reduce the number of loads. Because of the structure of my code, the
+approach I took was basically to just greedily group together instructions
+that shared sources. Here is the description from the function:
+-- takes a list of assigns from binary operations
+-- the point is that we want to group the maximum number of uses
+-- of the same variable together as possible to minimize register traffic
+-- i.e. if we have
+--   a = b * c
+--   d = e * f
+--   g = h * b
+-- then we actually want to reorder into
+--   a = b * c
+--   g = b * h
+--   d = e * f
+-- that way once b has been loaded once, it doesn't have to be
+-- loaded again for the second instruction
+--
+-- note that we probably have enough registers here so that it doesn't matter,
+-- but when the number of instructions is large, this actually does make
+-- a difference
+--
+-- assumes SSA and block
+
+While this is clearly better than the unoptimized version, which kind of dumps
+out the precomputations almost randomly, it's actually pretty close to optimal
+for the given structure. Here's why. Let's assume you have registers for
+multiplications. Then theoretically, you can do 4! different multiplications
+with only 4 loads. However, this doesn't actually happen in the precomputations
+- it's unlikely you will need all 4! permutations, and in fact, you can't
+actually do much better than the greedy approach.
+
+The CSE I ended up just rolling into the Gen module. Here's the description from
+the gen_feSquare function, which is a much generalized version for spitting out
+efficient precomputations for the case of f * f, where f is actually an array
+of integers, and multiplication is done by schoolbook multiplication.
+
+-- Finding the correct preoptimizations is a little less straightforward
+-- here than previously.
+--
+-- First, we calculate all the coefficients needed in the sum.
+-- Second, we find the minimum coefficient for a given term that includes 
+--   an offset (for example, if the offset is 19, but every term including 
+--   f1 * 19 has minimum coefficient f1 * 38, then we don't need f1 * 19, 
+--   and can actually just go straight to f1 * 38). We only need to do this 
+--   for the last ceil(s/2) elements.
+-- Finally, we go through and find all remaining precomputations. This should
+--   give one array of offset-related precomputations, and one array of 
+--   coefficients, and to produce the final sums we can just divide the
+--   corresponding term of the coefficients by the offset terms and the result
+--   should have been precomputed.
+--
+-- For example, let's say our sum is h[0] = f0f0   + 2*19*f1f3 + 19*f2f2.
+--                                   h[1] = 2*f0f1 + 19*f2f3
+-- On the first sweep we only are looking for terms containing offset = 19.
+-- Here the length s of the representation is 4, so we only need to look for
+-- the top ceil(4/2)=2 terms, which are f2 and f3. f3 has a 2*19 term and a
+-- 19 term, so we precompute f3_19. f2 has a 19 term, so we precompute 
+-- f2_19. Now we go through and find that a 2*f1 term, finishing off all the
+-- coefficients so we precompute that.
+-- That yields h[0] = f0 * f0 + f1_2 * f3_19 + f2 * f2_19
+--             h[1] = f0 * f1_2 + f2_19 * f3
+--
+-- Note that in the last step, we have to be a little careful - the algorithm
+-- might take several steps to finish. Imagine we have a 4*f2*f1 term. If
+-- we've already precomputed 2*f1 and 2*f2, then we should be done. Thus
+-- we do a first-pass computation to find the absolute minimum needed for
+-- each term, the build a tuple of pairs, precomputations, and sums
+-- on the fly.
+--
+-- Heuristically this actually does pretty well in finding a small set of
+-- precomputations.
+
+Unfortunately there is no way to turn off the effects of running this particular
+optimization. Suffice it to say that if you were trying to do something like
+
+  a = a0 + 2^20 a1, find a^2 (mod 2^39-19)
+
+then the unoptimized code might look like
+
+  b0 = a0 * a0 + a1 * a1 * 19 * 2
+  b1 = a0 * a1 * 2
+
+however, we might be able to do
+
+  a1_2 = a1 * 2
+  b0 = a0 * a0 + a1_2 * a1 * 19
+  b1 = a0 * a1_2
+
+HOW TO USE
+================================================================================
+1   > ghci
+2   Prelude> :l main
+3   *Main> fegen "25519"
+4   *Main> fegen "25519 -u"
+
+(2) all the modules are in main, so that is the only one you need to load
+(3) fegen is a wrapper function that generates all the code
+(4) currently, the only parameter it accepts is a flag that turns off post-
+optimizations, so either -u or --unopt will give you semi-unoptimized code.
+
+1   > ghci
+2   Prelude> :l test
+3   *Main> test
+4   *Main> test "-u"
+
+(2) again, I put all the necessary dependencies in the "test" module
+(3) this runs it with optimizations turned on
+(4) this runs it with optimizations turned off
+
+HOW TO TEST
+================================================================================
+As mentioned before, you can't really test the CSE - sorry. Perhaps just by
+inspection (the precomputations are very apparent). I have included two files -
+fegenopt.go and fegenunopt.go - that contain the output of fegen.
+
+I've written some very easy test cases for the dead code elimination and
+instruction rescheduling. See the HOW TO USE section for instructions. I've also
+included two files - testopt.go and testunopt.go - that contain the output. I
+also added comments that explain what each test case is testing.
+
+There's only one test for schedule, mainly because it's a pain to create the
+AST, and comparing fegenopt.go and fegenunopt.go gives you a much more
+complicated (real-world!) test case.
+
+There is also another, much easier prime that makes manual inspection a lot less
+tedious - try
+1   *Main> fegen "7619"
+which corresponds to the prime 2^76-19.
+
+Versions/Dependencies
+================================================================================
+I am using GHCi 7.8.3. External dependencies are Data.List, Data.List.split,
+Data.Function, and Text.Regex.

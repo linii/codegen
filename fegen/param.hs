@@ -5,6 +5,7 @@
 module Param where
 
   import Data.List
+  import Data.List.Split
 
   data Params = Params {base :: Int, 
                         offset :: Int, 
@@ -22,8 +23,22 @@ module Param where
 --
 -- we assume that the sign is always negative for now
 
-  genParams :: String -> Params
-  genParams s = 
+  genParams :: String -> String -> String -> String -> Params
+  genParams b o r f =
+    let r'  = map read (splitOn " " r)
+        l   = length r'
+        f'  = if (isInfixOf "--unopt" f || isInfixOf "-u" f)
+              then False
+              else True
+    in Params { base=read b,
+                offset=read o,
+                sign=Negative,
+                rep=r',
+                len=l,
+                opt=f' }
+
+  genSampleParams :: String -> Params
+  genSampleParams s = 
     let o   = if (isInfixOf "--unopt" s || isInfixOf "-u" s)
               then False
               else True

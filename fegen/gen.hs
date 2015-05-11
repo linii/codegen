@@ -7,31 +7,30 @@ module Gen where
   import Opt as O
   import Data.List
 
-  genAbsyn :: String -> A.Prog
-  genAbsyn s = 
-    let p = P.genParams s
-    in A.Prog [ gen_Package p,
-                gen_Imports,
-                gen_Type p, 
-                gen_feZero, 
-                gen_feOne,
-                gen_feAdd,
-                gen_feSub,
-                gen_feCopy,
-                gen_feCMove,
-                gen_load3,
-                gen_load4,
-                --gen_feFromBytes p,
-                gen_feToBytes p,
-                gen_feIsNegative,
-                gen_feIsNonZero,
-                gen_feNeg,
-                gen_feMul p,
-                gen_feSquare p,
-                gen_feSquare2 p,
-                gen_feInvert p,
-                gen_fePowN p,
-                gen_feString ]
+  genAbsyn :: P.Params -> A.Prog
+  genAbsyn p = 
+    A.Prog [  gen_Package p,
+              gen_Imports,
+              gen_Type p, 
+              gen_feZero, 
+              gen_feOne,
+              gen_feAdd,
+              gen_feSub,
+              gen_feCopy,
+              gen_feCMove,
+              gen_load3,
+              gen_load4,
+              --gen_feFromBytes p,
+              gen_feToBytes p,
+              gen_feIsNegative,
+              gen_feIsNonZero,
+              gen_feNeg,
+              gen_feMul p,
+              gen_feSquare p,
+              gen_feSquare2 p,
+              gen_feInvert p,
+              gen_fePowN p,
+              gen_feString ]
 
 -----------------------------------
 --                               --

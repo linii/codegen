@@ -1,5 +1,7 @@
 .DS_Store
 fe.go todo
 fe.go notes
-outputs
 README_CPSC421
+*.hi
+*.o
+main
