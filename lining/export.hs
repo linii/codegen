@@ -1,4 +1,5 @@
 module Export where
+
     import Ast as A
     import Text.RegEx
 
@@ -42,22 +43,27 @@ module Export where
         A.OpExp {left=l, op=o, right=r}
             -> printExp l ++ " " ++ printOp o ++ " " ++ printExp r
         A.Negate v = "-" ++ printVar v
-        A.Assign {var=v, val=exp, op=o} -> printVar v ++ case o of
+        A.Assign {var=v, val=exp, op=o, typ=t} -> case t of
+            Just x -> t + " "
+            Nothing -> ""
+            ++ printVar v ++ case o of
                 Just x -> printOp x + "="
                 Nothing -> "="
             ++ PrintExp exp ++ ";\n"
         A.Typecast {var=v, typ=t}
             -> "(" ++ t ++ ")" ++ printVar v ++ ";"
-        A.For -> "" -- not sure what to do, there are no for-loops in code
+        --A.ForExp {fvar=va, cond=c, inc=i, finit=f, floop=b} ->
+        --"for " ++ v va ++ " = " ++ printExp f ++ "; " ++ printExp c
+        --       ++ "; " ++ printExp i ++ " {\n  " ++ printExp b ++ "\n}"
         A.Parens e -> "( " ++ printExp e ++ " )"
         A.Return s -> "return " ++ printExp s ++ ";"
 
 
     printVar :: A.Var -> String
     printVar var = v var ++
-                  case idx var of
-                    Just x -> "[" ++ x ++ "]"
-                    Nothing -> ""
+                   case idx var of
+                        Just x -> "[" ++ x ++ "]"
+                        Nothing -> ""
 
     printOp :: A.Op -> String
     printOp op = case op of
