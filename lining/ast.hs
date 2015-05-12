@@ -2,12 +2,12 @@ module Ast where
     data Prog = Prog [Dec]
 
     data Dec =
-        Func {name :: String, params :: [Param], rtype :: String, body :: Exp}
+        FuncDec {name :: String, params :: [Param], rtype :: String, body :: Exp}
       | Typedef {type1 :: String, type2 :: String}
       | Define {name :: Var, val :: Exp }
       | Include {file :: String }
 
-    data Var = Var {v :: String, idx :: Maybe String}
+    data Var = Var {v :: String, idx :: Maybe String, typ :: Maybe String}
 
     data Param = Param { pvar :: String, ptyp :: String}
 
@@ -21,13 +21,13 @@ module Ast where
       | Negate (Var)
       | Assign {var :: Var, val :: Exp, op :: Maybe Op}
       | Typecast {var :: Var, typ :: String}
-      | For {from :: Exp, to :: Exp, loopvar :: Var, init :: Exp, incr :: Exp}
+      | For {from :: Exp, to :: Exp, loopvar :: Var, looptype :: String, incr :: Exp}
       | Parens (Exp)
       | Return (Exp)
 
     data Op =
         Plus | Minus | Times
-      | And | Or | ExOr | InAnd | InOr
+      | And | Or | ExOr
       | LShift | RShift
 
 
