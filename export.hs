@@ -13,7 +13,7 @@ module Export where
         case d of
           A.FuncDec {name=name', params=p, rtype=rt, body=b} ->
                 let result = case rt of
-                               Just n -> n ++ " "
+                               Just n -> n
                                Nothing -> "void"
                 in (result ++ " " ++ name' ++
                     "(" ++ printParams p ++ ") \n{\n  " ++
@@ -53,13 +53,19 @@ module Export where
                 Just x -> " " ++ printOp x ++ "= "
                 Nothing -> " = "
             ++ printExp exp ++ ";"
-        A.Typecast {var=v, newtyp=t}
-            -> "(" ++ t ++ ")" ++ printVar v ++ ";"
+        A.Typecast {tvar=v, newtyp=t}
+            -> "(" ++ t ++ ") " ++ printExp v
         --A.ForExp {fvar=va, cond=c, inc=i, finit=f, floop=b} ->
         --"for " ++ v va ++ " = " ++ printExp f ++ "; " ++ printExp c
         --       ++ "; " ++ printExp i ++ " {\n  " ++ printExp b ++ "\n}"
-        A.Parens e -> "( " ++ printExp e ++ " )"
-        A.Return s -> "return " ++ printExp s ++ ";"
+        A.Parens e -> "(" ++ printExp e ++ ")"
+        A.Return s -> "return " ++ printName s ++ ";"
+        A.Newline -> ""
+
+    printName :: A.Exp -> String
+    printName s = case s of
+        A.VarDec x -> v x
+        _ -> printExp s
 
     printVar :: A.Var -> String
     printVar var = case typ var of
@@ -81,10 +87,10 @@ module Export where
         LShift -> "<<"
         RShift -> ">>"
 
-    printArgs :: [A.Var] -> String
+    printArgs :: [A.Exp] -> String
     printArgs [] = ""
-    printArgs [x] = printVar x
-    printArgs (x:xs) = printVar x ++ " ," ++ printArgs xs
+    printArgs [x] = printExp x
+    printArgs (x:xs) = printExp x ++ " ," ++ printArgs xs
 
     addIndents :: String -> String
     addIndents s = subRegex (mkRegex "\n") s "\n  "

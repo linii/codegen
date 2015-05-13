@@ -1,4 +1,4 @@
-module Params where
+ module Params where
 
   data Params = Params { base :: Int, offset :: Int, sign :: Sign, rep :: [Int], len :: Int }
   data Sign = Negative | Positive

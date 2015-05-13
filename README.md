@@ -3,7 +3,7 @@
 author: Lining Wang 
 advisor: Bryan Ford 
 
-updated: 5/12/15
+updated: 5/13/15
 
 Outputs curve25519 optimized code in C.  
 
@@ -18,3 +18,10 @@ Outputs curve25519 optimized code in C.
 - X genSub
 - X genCopy
 - X genMove
+
+### 5/13 (worked 7 hours)
+- finished preliminary functions
+- X load_3 
+- X load_4
+- fromBytes
+- toBytes

@@ -19,14 +19,15 @@ module Ast where
       | VarExp (Var)
       | VarDec (Var)
       | IntExp (Int)
-      | FuncApply {func :: String, args :: [Var]}
+      | FuncApply {func :: String, args :: [Exp]}
       | OpExp {left :: Exp, oper :: Op, right :: Exp}
       | Negate (Var)
       | Assign {var :: Var, val :: Exp, op :: Maybe Op, atyp :: Maybe String}
-      | Typecast {var :: Var, newtyp :: String}
+      | Typecast {tvar :: Exp, newtyp :: String}
       | For {from :: Exp, to :: Exp, loopvar :: Var, looptype :: String, incr :: Exp}
       | Parens (Exp)
       | Return (Exp)
+      | Newline
 
     data Op =
         Plus

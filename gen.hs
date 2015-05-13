@@ -5,6 +5,7 @@ module Gen where
 
     type32 = "crypto_int32"
     type64 = "crypto_int64"
+    utype64 = "crypto_uint64"
 
     genAst :: P.Params -> A.Prog
     genAst p =
@@ -19,14 +20,13 @@ module Gen where
                     genSub n,
                     genCopy n,
                     genSwap n,
-                    genLoad3 n,
-                    genLoad4 n,
+                    genLoad3,
+                    genLoad4,
                     genFromBytes p,
                     genToBytes p,
                     genMul p,
                     genSquare p,
-                    genInvert p
-                    ]
+                    genInvert p ]
 
     genInclude1 :: A.Dec
     genInclude1 = A.Include "fe.h"
@@ -172,6 +172,7 @@ module Gen where
                        body=body'}
 
     ----------------------------------------------------------------------------
+
     genAll' :: Int -> A.Var -> A.Param -> A.Op -> [A.Exp]
     genAll' 0 _ _ _ = []
     genAll' n v1 v2 op' =
@@ -241,28 +242,48 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
-    genLoad3 :: Int -> A.Dec
-    genLoad3 numWords =
-        let param = A.Param { pvar="in", ptyp="const unsigned char * " }
-            body' = A.IntExp 0
+    genLoad' :: Int -> Int -> A.Var -> A.Param -> [A.Exp]
+    genLoad' 0 0 v1 v2 =
+        let var' = A.Var{v=pvar v2, idx=Just (show 0), typ=Nothing}
+            val' = A.Typecast{tvar=A.VarExp var' ,
+                              newtyp=utype64}
+        in [A.Assign{var=v1, val=val', op=Nothing, atyp=Nothing} ]
+
+    genLoad' n x v1 v2 =
+        let var' = A.Var{v=pvar v2, idx=Just (show x), typ=Nothing }
+            val' = Parens ( A.Typecast { tvar=A.VarExp var' ,
+                                         newtyp=utype64})
+        in [A.Assign {var=v1,
+                      val= A.OpExp{ left=val', right= A.IntExp n, oper=A.LShift },
+                      op=Just A.Or,
+                      atyp=Nothing} ]
+            ++ genLoad' (n - 8) (x - 1) v1 v2
+
+    genLoad3 :: A.Dec
+    genLoad3 =
+        let param = A.Param { pvar="in", ptyp="const unsigned char *" }
+            result = A.Var {v="result", idx=Nothing, typ=Just utype64}
+            main = genLoad' 16 2 result param
+            return = A.Return (A.VarDec result)
+            body' = A.Seq ([A.VarDec result] ++ main ++ [return])
 
         in A.FuncDec { name="load_3",
                        params= [param],
                        rtype=Just "static crypto_uint64",
                        body=body' }
 
-    ----------------------------------------------------------------------------
-
-    genLoad4 :: Int -> A.Dec
-    genLoad4 numWords =
-        let param = A.Param { pvar="in", ptyp="const unsigned char * " }
-
-            body' = A.IntExp 0
+    genLoad4 :: A.Dec
+    genLoad4 =
+        let param = A.Param { pvar="in", ptyp="const unsigned char *" }
+            result = A.Var {v="result", idx=Nothing, typ=Just utype64}
+            main = genLoad' 24 3 result param
+            return = A.Return (A.VarDec result)
+            body' = A.Seq ([A.VarDec result] ++ main ++ [return])
 
         in A.FuncDec { name="load_4",
                        params= [param],
                        rtype=Just "static crypto_uint64",
-                       body=body' }
+                       body=body'}
 
     ----------------------------------------------------------------------------
 
@@ -273,24 +294,113 @@ module Gen where
                                          idx=Nothing})]
                         ++ genVarDecs' (n - 1) v1
 
+    -- arguments:
+    -- load pattern
+    -- cumulative representation/size pattern from param for curve25519 (fixed)
+    -- counter for variable
+    -- for 32-bit word representation
+    genFromBytesLoad' :: [Int] -> [Int] -> Int -> Int -> String -> [A.Exp]
+    genFromBytesLoad' [] _ _ _ _ = []
+    genFromBytesLoad' (x:xs) (y:ys) n cumu name =
+        let -- left side of assignment exprssion
+            var' = A.Var{v=name++show n, idx=Nothing, typ=Just type64}
+
+            -- what you apply load function to; s variable
+            fvar' = A.Var{v="s", idx=Nothing, typ=Nothing}
+            arg' = A.OpExp { left=A.VarExp fvar', right=A.IntExp cumu, oper=A.Plus}
+
+            -- load function application expression; left half of right side
+            app' = A.FuncApply {func="load_"++ show x, args= [arg'] }
+
+            app'' = case xs of  -- because sometimes you have do weird stuff
+                    [] -> A.Parens A.OpExp { left=app',
+                                             oper=A.And,
+                                             right=A.IntExp(2^(x*8 - 1) - 1)}
+                    _ -> app'
+
+            remainder = 8 * cumu - y  -- how many bits are left over
+            val' = case remainder of  -- right side of assignment expression
+                    0 -> app''
+                    _ -> A.OpExp { left=app'',  -- shift by number of leftover bits
+                             right=A.IntExp remainder,
+                             oper=A.LShift}
+
+        -- full assignment expression
+        in [A.Assign { var=var', val=val', op=Nothing, atyp=Nothing}]
+            ++ genFromBytesLoad' xs ys (n + 1) (cumu + x) name
+
+    genFromBytesCarries' :: [Int] -> [Int] -> Int -> [A.Exp]
+    genFromBytesCarries' [] [] _ = []
+    genFromBytesCarries' (x:xs) (y:ys) offset =
+        let var' = A.Var{ v="carry" ++ show x, idx=Nothing, typ=Nothing}
+            hvar' = case offset of
+                0 -> A.Var{ v="h" ++ (show (x+1)), idx=Nothing, typ=Nothing}
+                _ -> A.Var{ v="h0", idx=Nothing, typ=Nothing}
+
+            hvar'' = A.Var{v="h" ++ show x, idx=Nothing, typ=Nothing}
+
+            shiftExp = A.OpExp {left=A.IntExp 1,
+                                right=A.IntExp (y - 1),
+                                oper=A.LShift}
+
+            val'' = A.OpExp { left=A.VarExp hvar'',
+                              right=A.Typecast { tvar=A.Parens shiftExp,
+                                                 newtyp=type64 },
+                              oper=A.Plus }
+
+            s1val = A.OpExp  { left=val'',
+                              right=A.IntExp y,
+                              oper=A.RShift }
+            s2val = case offset of
+                0 -> A.VarExp var'
+                _ ->  A.OpExp {left=A.VarExp hvar'',
+                      oper=A.Times,
+                      right=A.IntExp offset }
+            s3val = A.OpExp { left=A.VarExp var',
+                              right=A.IntExp y,
+                              oper=A.LShift }
+
+            s1 = A.Assign { var=var', val=s1val, op=Nothing, atyp=Nothing}
+            s2 = A.Assign { var=hvar', val=s2val, op=Just A.Plus, atyp=Nothing}
+            s3 = A.Assign { var=hvar'', val=s3val, op=Just A.Minus, atyp=Nothing}
+
+        in [s1, s2, s3] ++ [A.Newline] ++ genFromBytesCarries' xs ys 0
+    genFromBytesCarries' _ _ _ = error ("oh noes, incorrect format")
+
+    oddEvens :: [Int] -> ([Int], [Int])
+    oddEvens [] = ([], [])
+    oddEvens [x] = ([x], [])
+    oddEvens (x:y:xs) = (x:xp, y:yp) where (xp, yp) = oddEvens xs
+
     genFromBytes :: P.Params -> A.Dec
     genFromBytes p =
-        let h = A.Param { pvar="h", ptyp="fe" }
+        let rep' = rep p
+            l = len p
+
+            h = A.Param { pvar="h", ptyp="fe" }
             s = A.Param { pvar="s", ptyp="const unsigned char *"}
+            loadpattern = [4, 3, 3, 3, 3, 4, 3, 3, 3, 3 ] -- how the heck did they get this
+            cumulative = scanl1 (+) (0:(rep p))
+
+            reps = drop (l - 1) (rep' ++ rep')
+            indices = drop (l - 1) ([0.. l - 1] ++ [0..l - 1])
+            oddreps =  init (fst (oddEvens reps))
+            evenreps = snd (oddEvens reps)
+            oddi = init (fst (oddEvens indices))
+            eveni = snd (oddEvens indices)
 
             carry = A.Var {v="carry", idx=Nothing, typ=Just type64}
 
-            numWords = len p
-
-            -- we're ignoring some stuff here
-            body' = A.Seq ( genSimpleAssign' numWords (ParamX h) (ParamX h) ++
-                            genVarDecs' numWords carry )
+            body' = A.Seq ( genFromBytesLoad' loadpattern cumulative 0 0 (pvar h) ++ [A.Newline]
+                            ++ genVarDecs' l carry ++ [A.Newline]
+                            ++ genFromBytesCarries' oddi oddreps (offset p) ++ [A.Newline]
+                            ++ genFromBytesCarries' eveni evenreps 0 ++ [A.Newline]
+                            ++ genSimpleAssign' l (ParamX h) (ParamX h) )
 
         in A.FuncDec { name="fe_frombytes",
                        params=[h, s],
                        rtype=Nothing,
                        body=body'}
-
 
     ----------------------------------------------------------------------------
 
