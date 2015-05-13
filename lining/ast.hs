@@ -8,11 +8,11 @@ module Ast where
       | Define {defname :: String, value :: String }
       | Include {file :: String}
 
-    data AllVars = Var | Param
 
     data Var = Var {v :: String, idx :: Maybe String, typ :: Maybe String}
-
     data Param = Param { pvar :: String, ptyp :: String}
+
+    data GenVar = VarX Var | ParamX Param
 
     data Exp =
         Seq [Exp]
@@ -34,6 +34,7 @@ module Ast where
       | Times
       | And
       | Or
+      | ExOr
       | LShift
       | RShift
 

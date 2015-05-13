@@ -92,28 +92,25 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
-    genAssignFrom' :: Int -> A.AllVars -> A.AllVars -> [A.Exp]
-    genAssignFrom' 0 _ _ = []
-    genAssignFrom' n v1 v2 =
-        let var' = A.Var {v=pvar v1 ++ show (n - 1), idx=Nothing, typ=Just type32 }
-            val' = A.Var {v=pvar v2, idx=Just (show (n - 1)), typ=Nothing }
-        in [ A.Assign { var=var',
-                        val=A.VarExp (val'),
-                        op=Nothing,
-                        atyp=Nothing } ]
-           ++ genAssignFrom' (n - 1) v1 v2
 
-
-    genAssignTo' :: Int -> A.AllVars -> A.AllVars -> [A.Exp]
-    genAssignTo' 0 _ _ = []
-    genAssignTo' n v1 v2 =
-        let var' = A.Var { v=pvar v1, idx = Just (show (n - 1)), typ=Nothing}
-            val' = A.Var { v=pvar v2 ++ show (n - 1), idx=Nothing, typ=Nothing}
+    genSimpleAssign' :: Int -> A.GenVar -> A.GenVar -> [A.Exp]
+    genSimpleAssign' 0 _ _ = []
+    genSimpleAssign' n v1 v2 =
+        let var' = case v1 of
+                    ParamX (A.Param {pvar=pv, ptyp=ptype}) ->
+                        A.Var { v=pv, idx = Just (show (n - 1)), typ=Nothing}
+                    VarX (A.Var {v=v1n, idx=i, typ=t}) ->
+                        A.Var { v=v1n ++ show (n - 1), idx = Nothing, typ=t}
+            val' = case v2 of
+                    ParamX (A.Param {pvar=pv, ptyp=ptype}) ->
+                        A.Var { v= pv, idx=Just (show (n - 1)), typ=Nothing}
+                    VarX (A.Var {v=v2n, idx=i, typ=t}) ->
+                        A.Var { v=v2n ++ show (n - 1), idx=Nothing, typ=Nothing}
         in [A.Assign { var=var',
                        val=A.VarExp (val'),
                        op=Nothing,
                        atyp=Nothing } ]
-           ++ genAssignTo' (n - 1) v1 v2
+           ++ genSimpleAssign' (n - 1) v1 v2
 
     --------------------------------------------------------------------------
 
@@ -126,14 +123,14 @@ module Gen where
             g = A.Param { pvar="g",
                           ptyp="fe"}
 
-            f' = A.Var { v="f", idx=Nothing, typ=type32 }
-            g' = A.Var { v="g", idx=Nothing, typ=type32 }
-            h' = A.Var { v="h", idx=Nothing, typ=type32 }
+            f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
+            g' = A.Var { v="g", idx=Nothing, typ=Just type32 }
+            h' = A.Var { v="h", idx=Nothing, typ=Just type32 }
 
-            body' = A.Seq ( genAssignFrom' numWords f' f ++
-                            genAssignFrom' numWords g' g ++
-                            genOper' numWords h' f g A.Plus ++
-                            genAssignTo' numWords h h' )
+            body' = A.Seq ( genSimpleAssign' numWords (VarX f') (ParamX f) ++
+                            genSimpleAssign' numWords (VarX g') (ParamX g) ++
+                            genOper' numWords (VarX h') (ParamX f) (ParamX g) A.Plus ++
+                            genSimpleAssign' numWords (ParamX h) (VarX h') )
 
         in A.FuncDec { name="fe_add",
                        params=[h, f, g],
@@ -151,14 +148,14 @@ module Gen where
             g = A.Param { pvar="g",
                           ptyp="fe" }
 
-            f' = A.Var { v="f", idx=Nothing, typ=type32 }
-            g' = A.Var { v="g", idx=Nothing, typ=type32 }
-            h' = A.Var { v="h", idx=Nothing, typ=type32 }
+            f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
+            g' = A.Var { v="g", idx=Nothing, typ=Just type32 }
+            h' = A.Var { v="h", idx=Nothing, typ=Just type32 }
 
-            body' = A.Seq ( genAssignFrom' numWords f' f ++
-                            genAssignFrom' numWords g' g ++
-                            genOper' numWords h' f g A.Minus ++
-                            genAssignTo' numWords h h' )
+            body' = A.Seq ( genSimpleAssign' numWords (VarX f') (ParamX f) ++
+                            genSimpleAssign' numWords (VarX g') (ParamX g)++
+                            genOper' numWords (VarX h') (ParamX f) (ParamX g) A.Minus ++
+                            genSimpleAssign' numWords (ParamX h) (VarX h') )
 
         in A.FuncDec { name="fe_sub",
                        params=[h, f, g],
@@ -174,10 +171,10 @@ module Gen where
             h = A.Param { pvar="h",
                           ptyp="fe" }
 
-            f' = A.Var { v="f", idx=Nothing, typ=type32 }
+            f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
 
-            body' = A.Seq ( genAssignFrom' numWords f' f ++
-                            genAssignTo' numWords h f' )
+            body' = A.Seq ( genSimpleAssign' numWords (VarX f') (ParamX f) ++
+                            genSimpleAssign' numWords (ParamX h) (VarX f') )
 
         in A.FuncDec { name="fe_copy",
                        params=[h, f],
@@ -185,13 +182,14 @@ module Gen where
                        body=body'}
 
     ----------------------------------------------------------------------------
-    genAll' :: Int -> A.AllVars -> A.AllVars -> A.Exp -> A.Dec
+    genAll' :: Int -> A.Var -> A.Param -> A.Op -> [A.Exp]
+    genAll' 0 _ _ _ = []
     genAll' n v1 v2 op' =
-        [ A.Assign {var=v1 ++ (show (n - 1)),
-                    val=A.Exp (v2),
-                    op=op'
+        [ A.Assign {var=A.Var {v=(v v1) ++ (show (n - 1)), idx=Nothing, typ=Nothing},
+                    val=A.VarExp (A.Var {v=pvar v2, idx=Nothing, typ=Nothing}),
+                    op=Just op',
                     atyp=Nothing} ]
-        ++ genAll' (n - 1) v1 v2
+        ++ genAll' (n - 1) v1 v2 op'
 
     genSwap :: Int -> A.Dec
     genSwap numWords =
@@ -202,20 +200,21 @@ module Gen where
             b = A.Param { pvar="b",
                           ptyp="unsigned int" }
 
-            f' = A.Var { v="f", idx=Nothing, typ=type32 }
-            g' = A.Var { v="g", idx=Nothing, typ=type32 }
-            x = A.Var { v="x", idx=Nothing, typ=type32 }
+            f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
+            g' = A.Var { v="g", idx=Nothing, typ=Just type32 }
+            x = A.Var { v="x", idx=Nothing, typ=Just type32 }
+            b' = A.Var {v= pvar b, idx=Nothing, typ=Nothing}
 
-            body' = A.Seq ( genAssignFrom' numWords f' f ++
-                            genAssignFrom' numWords g' g ++
-                            genOper' numWords x f' g' A.Or ++
-                            A.Assign {var=b,
-                                      val=Negate (A.Exp b),
+            body' = A.Seq ( genSimpleAssign' numWords (VarX f') (ParamX f) ++
+                            genSimpleAssign' numWords (VarX g') (ParamX g) ++
+                            genOper' numWords (VarX x) (VarX f') (VarX g') A.ExOr ++
+                            [A.Assign {var=b',
+                                      val=Negate b',
                                       op=Nothing,
-                                      atyp=Nothing} ++
+                                      atyp=Nothing}] ++
                             genAll' numWords x b A.And ++
-                            genOper' numWords f f' x A.Or ++
-                            genOper' numWords g g' x A.Or
+                            genOper' numWords (ParamX f) (VarX f') (VarX x) A.ExOr ++
+                            genOper' numWords (ParamX g) (VarX g') (VarX x) A.ExOr
                             )
 
         in A.FuncDec { name="fe_cswap",
@@ -225,21 +224,30 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
-    genOper' :: Int -> A.AllVars -> A.AllVars -> A.AllVars -> A.Op -> [A.Exp]
+    genOper' :: Int -> A.GenVar -> A.GenVar -> A.GenVar -> A.Op -> [A.Exp]
     genOper' 0 _ _ _ _  = []
     genOper' n v1 v2 v3 oper' =
-        let var' =
-            let id = case idx n of
-                    Nothing -> ""
-                    Just x -> n - 1
-            in A.Var { v=pvar v1 ++ show n, idx=id, typ=Just type32 }
-            op' = A.OpExp { left=A.VarExp (A.Var{ v=pvar v2 ++ show (n - 1),
+        let id = case v1 of
+                    ParamX (A.Param {pvar=asdf, ptyp=paramtype}) -> Just (show (n - 1))
+                    _ -> Nothing
+            vtyp = case v1 of
+                    VarX (A.Var {v=v1, idx=i, typ=t}) -> t
+                    _ -> Nothing
+            vname = case v1 of
+                    ParamX (A.Param {pvar=v1name, ptyp=typ}) -> v1name
+                    VarX (A.Var {v=v1n, idx=i, typ=t})-> v1n ++ show (n - 1)
+            v2' = case v2 of
+                    VarX (A.Var {v=v2name, typ=t}) -> v2name
+                    ParamX (A.Param {pvar=v2n, ptyp=typ}) -> v2n
+            v3' = case v3 of
+                    VarX (A.Var {v=v3name, typ=t}) -> v3name
+                    ParamX (A.Param {pvar=v3n, ptyp=typ}) -> v3n
+        in [ A.Assign { var=A.Var { v=vname, idx=id, typ=vtyp},
+                        val=A.OpExp { left=A.VarExp (A.Var{ v=v2' ++ show (n - 1),
                                                   idx=Nothing, typ=Nothing } ),
-                            oper=oper',
-                            right=A.VarExp (A.Var{ v=(pvar v3 )++ show (n - 1),
-                                                   idx=Nothing, typ=Nothing } )}
-        in [ A.Assign { var=var',
-                        val=op' ,
+                                      oper=oper',
+                                      right=A.VarExp (A.Var{ v=v3' ++ show (n - 1),
+                                                             idx=Nothing, typ=Nothing } )},
                         op=Nothing,
                         atyp=Nothing } ]
            ++ genOper' (n - 1) v1 v2 v3 oper'
@@ -282,7 +290,7 @@ module Gen where
             numWords = len p
 
 
-            body' = A.Seq ( genAssignTo' numWords h h )
+            body' = A.Seq ( genSimpleAssign' numWords (ParamX h) (ParamX h) )
 
         in A.FuncDec { name="fe_frombytes",
                        params=[h, s],
@@ -300,7 +308,7 @@ module Gen where
                           ptyp="unsigned char *"}
             numWords = len p
 
-            body' = A.Seq ( genAssignFrom' numWords h h )
+            body' = A.Seq ( genSimpleAssign' numWords (ParamX h) (ParamX h) )
 
        in A.FuncDec { name="fe_tobytes",
                       params=[s, h],
@@ -319,9 +327,9 @@ module Gen where
                           ptyp="fe" }
             numWords = len p
 
-            body' = A.Seq ( genAssignFrom' numWords f f ++
-                            genAssignFrom' numWords g g ++
-                            genAssignTo' numWords h h )
+            body' = A.Seq ( genSimpleAssign' numWords (ParamX f) (ParamX f) ++
+                            genSimpleAssign' numWords (ParamX g) (ParamX g) ++
+                            genSimpleAssign' numWords (ParamX h) (ParamX h ))
 
         in A.FuncDec { name="fe_mul",
                        params=[h, f, g],
@@ -332,17 +340,16 @@ module Gen where
 
     genSquare ::  P.Params -> A.Dec
     genSquare p =
-        let h = A.Param { pvar="h",
-                          ptyp="fe" }
-            f = A.Param { pvar="f",
-                          ptyp="fe" }
+        let h = A.Param { pvar="h", ptyp="fe" }
+            f = A.Param { pvar="f", ptyp="fe" }
+
             numWords = len p
 
-            body' = A.Seq  ( genAssignFrom' numWords f f ++
-                             genAssignTo' numWords h h )
+            body' = A.Seq  ( genSimpleAssign' numWords (ParamX f) (ParamX f) ++
+                             genSimpleAssign' numWords (ParamX h) (ParamX h))
 
         in A.FuncDec { name="fe_sq",
-                       params=[h, f],
+                       params=[h, f ],
                        rtype=Nothing,
                        body=body' }
 

@@ -50,7 +50,7 @@ module Export where
             Just t -> t ++ " "
             Nothing -> ""
             ++ printVar v ++ case o of
-                Just x -> printOp x ++ " = "
+                Just x -> " " ++ printOp x ++ "= "
                 Nothing -> " = "
             ++ printExp exp ++ ";"
         A.Typecast {var=v, newtyp=t}
@@ -77,6 +77,7 @@ module Export where
         Times -> "*"
         And ->  "&"
         Or -> "|"
+        ExOr -> "^"
         LShift -> "<<"
         RShift -> ">>"
 
