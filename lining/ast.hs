@@ -8,6 +8,8 @@ module Ast where
       | Define {defname :: String, value :: String }
       | Include {file :: String}
 
+    data AllVars = Var | Param
+
     data Var = Var {v :: String, idx :: Maybe String, typ :: Maybe String}
 
     data Param = Param { pvar :: String, ptyp :: String}
@@ -27,9 +29,13 @@ module Ast where
       | Return (Exp)
 
     data Op =
-        Plus | Minus | Times
-      | And | Or | ExOr | InOr
-      | LShift | RShift
+        Plus
+      | Minus
+      | Times
+      | And
+      | Or
+      | LShift
+      | RShift
 
 
 

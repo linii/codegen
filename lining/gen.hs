@@ -27,7 +27,6 @@ module Gen where
                     genSquare p
                     ]
 
-
     genInclude1 :: A.Dec
     genInclude1 = A.Include "fe.h"
 
@@ -93,7 +92,7 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
-    genAssignFrom' :: Int -> A.Param -> A.Param -> [A.Exp]
+    genAssignFrom' :: Int -> A.AllVars -> A.AllVars -> [A.Exp]
     genAssignFrom' 0 _ _ = []
     genAssignFrom' n v1 v2 =
         let var' = A.Var {v=pvar v1 ++ show (n - 1), idx=Nothing, typ=Just type32 }
@@ -102,10 +101,10 @@ module Gen where
                         val=A.VarExp (val'),
                         op=Nothing,
                         atyp=Nothing } ]
-           ++ genAssignTo' (n - 1) v1 v2
+           ++ genAssignFrom' (n - 1) v1 v2
 
 
-    genAssignTo' :: Int -> A.Param -> A.Param -> [A.Exp]
+    genAssignTo' :: Int -> A.AllVars -> A.AllVars -> [A.Exp]
     genAssignTo' 0 _ _ = []
     genAssignTo' n v1 v2 =
         let var' = A.Var { v=pvar v1, idx = Just (show (n - 1)), typ=Nothing}
@@ -116,22 +115,7 @@ module Gen where
                        atyp=Nothing } ]
            ++ genAssignTo' (n - 1) v1 v2
 
-    ----------------------------------------------------------------------------
-
-    genAddSub' :: Int -> A.Param -> A.Param -> A.Param -> A.Op -> [A.Exp]
-    genAddSub' 0 _ _ _ _  = []
-    genAddSub' n v1 v2 v3 oper' =
-        let var' = A.Var { v=pvar v1 ++ show n, idx=Nothing, typ=Just type32 }
-            op' = A.OpExp { left=A.VarExp (A.Var{ v=pvar v2 ++ show n,
-                                                  idx=Nothing, typ=Nothing } ),
-                            oper=oper',
-                            right=A.VarExp (A.Var{ v=(pvar v3 )++ show n,
-                                                   idx=Nothing, typ=Nothing } )}
-        in [ A.Assign { var=var',
-                        val=op' ,
-                        op=Nothing,
-                        atyp=Nothing } ]
-           ++ genAddSub' (n - 1) v1 v2 v3 oper'
+    --------------------------------------------------------------------------
 
     genAdd :: Int -> A.Dec
     genAdd numWords =
@@ -142,10 +126,14 @@ module Gen where
             g = A.Param { pvar="g",
                           ptyp="fe"}
 
-            body' = A.Seq ( genAssignFrom' numWords f f ++
-                            genAssignFrom' numWords g g ++
-                            genAddSub' numWords h f g A.Plus ++
-                            genAssignTo' numWords h h )
+            f' = A.Var { v="f", idx=Nothing, typ=type32 }
+            g' = A.Var { v="g", idx=Nothing, typ=type32 }
+            h' = A.Var { v="h", idx=Nothing, typ=type32 }
+
+            body' = A.Seq ( genAssignFrom' numWords f' f ++
+                            genAssignFrom' numWords g' g ++
+                            genOper' numWords h' f g A.Plus ++
+                            genAssignTo' numWords h h' )
 
         in A.FuncDec { name="fe_add",
                        params=[h, f, g],
@@ -163,10 +151,14 @@ module Gen where
             g = A.Param { pvar="g",
                           ptyp="fe" }
 
-            body' = A.Seq ( genAssignFrom' numWords f f ++
-                            genAssignFrom' numWords g g ++
-                            genAddSub' numWords h f g A.Minus ++
-                            genAssignTo' numWords h h )
+            f' = A.Var { v="f", idx=Nothing, typ=type32 }
+            g' = A.Var { v="g", idx=Nothing, typ=type32 }
+            h' = A.Var { v="h", idx=Nothing, typ=type32 }
+
+            body' = A.Seq ( genAssignFrom' numWords f' f ++
+                            genAssignFrom' numWords g' g ++
+                            genOper' numWords h' f g A.Minus ++
+                            genAssignTo' numWords h h' )
 
         in A.FuncDec { name="fe_sub",
                        params=[h, f, g],
@@ -182,8 +174,10 @@ module Gen where
             h = A.Param { pvar="h",
                           ptyp="fe" }
 
-            body' = A.Seq ( genAssignFrom' numWords f f ++
-                            genAssignTo' numWords h f )
+            f' = A.Var { v="f", idx=Nothing, typ=type32 }
+
+            body' = A.Seq ( genAssignFrom' numWords f' f ++
+                            genAssignTo' numWords h f' )
 
         in A.FuncDec { name="fe_copy",
                        params=[h, f],
@@ -191,6 +185,13 @@ module Gen where
                        body=body'}
 
     ----------------------------------------------------------------------------
+    genAll' :: Int -> A.AllVars -> A.AllVars -> A.Exp -> A.Dec
+    genAll' n v1 v2 op' =
+        [ A.Assign {var=v1 ++ (show (n - 1)),
+                    val=A.Exp (v2),
+                    op=op'
+                    atyp=Nothing} ]
+        ++ genAll' (n - 1) v1 v2
 
     genSwap :: Int -> A.Dec
     genSwap numWords =
@@ -201,12 +202,47 @@ module Gen where
             b = A.Param { pvar="b",
                           ptyp="unsigned int" }
 
-            body' = A.IntExp 0
+            f' = A.Var { v="f", idx=Nothing, typ=type32 }
+            g' = A.Var { v="g", idx=Nothing, typ=type32 }
+            x = A.Var { v="x", idx=Nothing, typ=type32 }
+
+            body' = A.Seq ( genAssignFrom' numWords f' f ++
+                            genAssignFrom' numWords g' g ++
+                            genOper' numWords x f' g' A.Or ++
+                            A.Assign {var=b,
+                                      val=Negate (A.Exp b),
+                                      op=Nothing,
+                                      atyp=Nothing} ++
+                            genAll' numWords x b A.And ++
+                            genOper' numWords f f' x A.Or ++
+                            genOper' numWords g g' x A.Or
+                            )
 
         in A.FuncDec { name="fe_cswap",
                        params=[f, g, b],
                        rtype=Nothing,
                        body=body' }
+
+    ----------------------------------------------------------------------------
+
+    genOper' :: Int -> A.AllVars -> A.AllVars -> A.AllVars -> A.Op -> [A.Exp]
+    genOper' 0 _ _ _ _  = []
+    genOper' n v1 v2 v3 oper' =
+        let var' =
+            let id = case idx n of
+                    Nothing -> ""
+                    Just x -> n - 1
+            in A.Var { v=pvar v1 ++ show n, idx=id, typ=Just type32 }
+            op' = A.OpExp { left=A.VarExp (A.Var{ v=pvar v2 ++ show (n - 1),
+                                                  idx=Nothing, typ=Nothing } ),
+                            oper=oper',
+                            right=A.VarExp (A.Var{ v=(pvar v3 )++ show (n - 1),
+                                                   idx=Nothing, typ=Nothing } )}
+        in [ A.Assign { var=var',
+                        val=op' ,
+                        op=Nothing,
+                        atyp=Nothing } ]
+           ++ genOper' (n - 1) v1 v2 v3 oper'
 
     ----------------------------------------------------------------------------
 

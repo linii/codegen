@@ -13,11 +13,11 @@ module Export where
         case d of
           A.FuncDec {name=name', params=p, rtype=rt, body=b} ->
                 let result = case rt of
-                               Just n -> " " ++ n ++ " "
-                               Nothing -> " "
+                               Just n -> n ++ " "
+                               Nothing -> "void"
                 in (result ++ " " ++ name' ++
-                    "(" ++ printParams p ++ ") {\n" ++
-                     addIndents ( printExp b ) ++ "\n}")
+                    "(" ++ printParams p ++ ") \n{\n  " ++
+                     addIndents (printExp b) ++ "\n}")
           A.Typedef {type1=typ1, type2=typ2} -> "typedef " ++ typ1 ++ " " ++ typ2 ++ ";"
           A.Ifdef {mode=str} -> "#ifndef " ++ str
           A.Define {defname=n, value=val} -> "#define " ++ n ++ " " ++ val
@@ -38,7 +38,7 @@ module Export where
         A.Seq s -> case s of
             [] -> ""
             [s] -> printExp s
-            (x:xs) -> printExp x ++ printExp (A.Seq xs)
+            (x:xs) -> printExp x ++ "\n" ++ printExp (A.Seq xs)
         A.VarExp x -> printVar x
         A.VarDec {vars=vs, vtyp=t} -> t ++ " " ++ printArgs vs
         A.IntExp x -> show x
@@ -52,7 +52,7 @@ module Export where
             ++ printVar v ++ case o of
                 Just x -> printOp x ++ " = "
                 Nothing -> " = "
-            ++ printExp exp ++ ";\n"
+            ++ printExp exp ++ ";"
         A.Typecast {var=v, newtyp=t}
             -> "(" ++ t ++ ")" ++ printVar v ++ ";"
         --A.ForExp {fvar=va, cond=c, inc=i, finit=f, floop=b} ->
@@ -62,7 +62,10 @@ module Export where
         A.Return s -> "return " ++ printExp s ++ ";"
 
     printVar :: A.Var -> String
-    printVar var = v var ++
+    printVar var = case typ var of
+                        Just n -> n ++ " "
+                        Nothing -> ""
+                    ++ v var ++
                    case idx var of
                         Just x -> "[" ++ x ++ "]"
                         Nothing -> ""
@@ -72,10 +75,8 @@ module Export where
         Plus ->  "+"
         Minus -> "-"
         Times -> "*"
-        And ->  "&&"
-        Or -> "||"
-        ExOr -> "^"
-        InOr -> "|"
+        And ->  "&"
+        Or -> "|"
         LShift -> "<<"
         RShift -> ">>"
 
