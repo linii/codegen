@@ -40,7 +40,7 @@ module Export where
             [s] -> printExp s
             (x:xs) -> printExp x ++ "\n" ++ printExp (A.Seq xs)
         A.VarExp x -> printVar x
-        A.VarDec {vars=vs, vtyp=t} -> t ++ " " ++ printArgs vs
+        A.VarDec x-> printVar x ++ ";"
         A.IntExp x -> show x
         A.FuncApply {func=f, args=a} -> f ++ "(" ++ printArgs a ++ ")"
         A.OpExp {left=l, oper=o, right=r}

@@ -24,7 +24,8 @@ module Gen where
                     genFromBytes p,
                     genToBytes p,
                     genMul p,
-                    genSquare p
+                    genSquare p,
+                    genInvert p
                     ]
 
     genInclude1 :: A.Dec
@@ -56,8 +57,7 @@ module Gen where
 
     genZero :: Int -> A.Dec
     genZero numWords =
-        let param = A.Param { pvar="h",
-                              ptyp="fe" }
+        let param = A.Param { pvar="h", ptyp="fe" }
             body' = A.Seq ( genZero' numWords param )
 
         in A.FuncDec { name="fe_0",
@@ -81,8 +81,7 @@ module Gen where
 
     genOne :: Int ->  A.Dec
     genOne numWords=
-        let param = A.Param { pvar="h",
-                              ptyp="fe" }
+        let param = A.Param { pvar="h", ptyp="fe" }
             body' = A.Seq (genOne' numWords param)
 
         in A.FuncDec { name="fe_1",
@@ -91,7 +90,6 @@ module Gen where
                        body=body' }
 
     ----------------------------------------------------------------------------
-
 
     genSimpleAssign' :: Int -> A.GenVar -> A.GenVar -> [A.Exp]
     genSimpleAssign' 0 _ _ = []
@@ -116,12 +114,9 @@ module Gen where
 
     genAdd :: Int -> A.Dec
     genAdd numWords =
-        let h = A.Param { pvar="h",
-                          ptyp="fe"}
-            f = A.Param { pvar="f",
-                          ptyp="fe"}
-            g = A.Param { pvar="g",
-                          ptyp="fe"}
+        let h = A.Param { pvar="h", ptyp="fe"}
+            f = A.Param { pvar="f", ptyp="fe"}
+            g = A.Param { pvar="g", ptyp="fe"}
 
             f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
             g' = A.Var { v="g", idx=Nothing, typ=Just type32 }
@@ -141,12 +136,9 @@ module Gen where
 
     genSub :: Int -> A.Dec
     genSub numWords =
-        let h = A.Param { pvar="h",
-                          ptyp="fe" }
-            f = A.Param { pvar="f",
-                          ptyp="fe" }
-            g = A.Param { pvar="g",
-                          ptyp="fe" }
+        let h = A.Param { pvar="h", ptyp="fe" }
+            f = A.Param { pvar="f", ptyp="fe" }
+            g = A.Param { pvar="g", ptyp="fe" }
 
             f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
             g' = A.Var { v="g", idx=Nothing, typ=Just type32 }
@@ -166,10 +158,8 @@ module Gen where
 
     genCopy :: Int -> A.Dec
     genCopy numWords =
-        let f = A.Param { pvar="f",
-                          ptyp="fe" }
-            h = A.Param { pvar="h",
-                          ptyp="fe" }
+        let f = A.Param { pvar="f", ptyp="fe" }
+            h = A.Param { pvar="h", ptyp="fe" }
 
             f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
 
@@ -193,12 +183,9 @@ module Gen where
 
     genSwap :: Int -> A.Dec
     genSwap numWords =
-        let f = A.Param { pvar="f",
-                          ptyp="fe" }
-            g = A.Param { pvar="g",
-                          ptyp="fe" }
-            b = A.Param { pvar="b",
-                          ptyp="unsigned int" }
+        let f = A.Param { pvar="f", ptyp="fe" }
+            g = A.Param { pvar="g", ptyp="fe" }
+            b = A.Param { pvar="b", ptyp="unsigned int" }
 
             f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
             g' = A.Var { v="g", idx=Nothing, typ=Just type32 }
@@ -256,8 +243,7 @@ module Gen where
 
     genLoad3 :: Int -> A.Dec
     genLoad3 numWords =
-        let param = A.Param { pvar="in",
-                              ptyp="const unsigned char * " }
+        let param = A.Param { pvar="in", ptyp="const unsigned char * " }
             body' = A.IntExp 0
 
         in A.FuncDec { name="load_3",
@@ -269,8 +255,7 @@ module Gen where
 
     genLoad4 :: Int -> A.Dec
     genLoad4 numWords =
-        let param = A.Param { pvar="in",
-                              ptyp="const unsigned char * " }
+        let param = A.Param { pvar="in", ptyp="const unsigned char * " }
 
             body' = A.IntExp 0
 
@@ -281,16 +266,25 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
+    genVarDecs' :: Int -> Var -> [A.Exp]
+    genVarDecs' 0 _ = []
+    genVarDecs' n v1 = [A.VarDec (A.Var {v= (v v1) ++ (show (n - 1)),
+                                         typ=(typ v1),
+                                         idx=Nothing})]
+                        ++ genVarDecs' (n - 1) v1
+
     genFromBytes :: P.Params -> A.Dec
     genFromBytes p =
-        let h = A.Param { pvar="h",
-                          ptyp="fe" }
-            s = A.Param { pvar="s",
-                          ptyp="const unsigned char *"}
+        let h = A.Param { pvar="h", ptyp="fe" }
+            s = A.Param { pvar="s", ptyp="const unsigned char *"}
+
+            carry = A.Var {v="carry", idx=Nothing, typ=Just type64}
+
             numWords = len p
 
-
-            body' = A.Seq ( genSimpleAssign' numWords (ParamX h) (ParamX h) )
+            -- we're ignoring some stuff here
+            body' = A.Seq ( genSimpleAssign' numWords (ParamX h) (ParamX h) ++
+                            genVarDecs' numWords carry )
 
         in A.FuncDec { name="fe_frombytes",
                        params=[h, s],
@@ -302,13 +296,14 @@ module Gen where
 
     genToBytes :: P.Params -> A.Dec
     genToBytes p =
-        let h = A.Param { pvar="h",
-                          ptyp="fe" }
-            s = A.Param { pvar="s",
-                          ptyp="unsigned char *"}
+        let h = A.Param { pvar="h", ptyp="fe" }
+            s = A.Param { pvar="s", ptyp="unsigned char *"}
+            carry = A.Var {v="carry", idx=Nothing, typ=Just type32}
+
             numWords = len p
 
-            body' = A.Seq ( genSimpleAssign' numWords (ParamX h) (ParamX h) )
+            body' = A.Seq ( genSimpleAssign' numWords (ParamX h) (ParamX h) ++
+                            genVarDecs' numWords carry)
 
        in A.FuncDec { name="fe_tobytes",
                       params=[s, h],
@@ -319,12 +314,9 @@ module Gen where
 
     genMul ::  P.Params -> A.Dec
     genMul p =
-        let h = A.Param { pvar="h",
-                          ptyp="fe" }
-            f = A.Param { pvar="f",
-                          ptyp="fe" }
-            g = A.Param { pvar="g",
-                          ptyp="fe" }
+        let h = A.Param { pvar="h", ptyp="fe" }
+            f = A.Param { pvar="f", ptyp="fe" }
+            g = A.Param { pvar="g", ptyp="fe" }
             numWords = len p
 
             body' = A.Seq ( genSimpleAssign' numWords (ParamX f) (ParamX f) ++
@@ -342,14 +334,32 @@ module Gen where
     genSquare p =
         let h = A.Param { pvar="h", ptyp="fe" }
             f = A.Param { pvar="f", ptyp="fe" }
-
+            carry = A.Var {v="carry", idx=Nothing, typ=Just type32}
             numWords = len p
 
             body' = A.Seq  ( genSimpleAssign' numWords (ParamX f) (ParamX f) ++
-                             genSimpleAssign' numWords (ParamX h) (ParamX h))
+                             genSimpleAssign' numWords (ParamX h) (ParamX h) ++
+                             genVarDecs' numWords carry)
 
         in A.FuncDec { name="fe_sq",
                        params=[h, f ],
+                       rtype=Nothing,
+                       body=body' }
+
+
+    ----------------------------------------------------------------------------
+    -- https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_scalarmult/curve25519/ref10/fe_invert_curve25519_ref10.c
+    -- there seems to be some things missing...
+
+    genInvert :: P.Params -> A.Dec
+    genInvert p =
+        let out = A.Param { pvar="out", ptyp="fe"}
+            z = A.Param {pvar="z", ptyp="fe"}
+
+            body' = A.IntExp 0
+
+        in A.FuncDec { name="fe_invert",
+                       params=[out, z],
                        rtype=Nothing,
                        body=body' }
 

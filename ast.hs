@@ -17,7 +17,7 @@ module Ast where
     data Exp =
         Seq [Exp]
       | VarExp (Var)
-      | VarDec { vars :: [Var], vtyp :: String}
+      | VarDec (Var)
       | IntExp (Int)
       | FuncApply {func :: String, args :: [Var]}
       | OpExp {left :: Exp, oper :: Op, right :: Exp}
