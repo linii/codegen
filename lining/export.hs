@@ -1,63 +1,65 @@
 module Export where
 
     import Ast as A
-    import Text.RegEx
+    import Text.Regex
 
     printAst :: A.Prog -> String
     printAst a = case a of
         (A.Prog []) -> ""
-        (A.Prog (x:xs)) = printDec x ++ printAst (A.Prog xs)
+        (A.Prog (x:xs)) -> printDec x ++ printAst (A.Prog xs)
 
     printDec :: A.Dec -> String
-    printDec d = (case d of
-        A.Func {name=n, params=p, rtype=rt, body=b} ->
-            let r = case rt of
-                Just n -> n + " "
-                Nothing -> "void "
-            in (rt ++ n ++ "(" ++ printParams p ++ ") {\n" ++
-                addIndents (printExp b) ++ "\n}")
-        A.Typedef -> "typedef" ++ type1 d ++ " " ++ type2 d ++ ";"
-        A.Define -> "#define " ++ printVar (name d) ++ " " ++ printExp (val d)
-        A.Include -> "#include \"" ++ file d  ++ "\""
-    ) ++ "\n\n"
+    printDec d = (
+        case d of
+          A.FuncDec {name=name', params=p, rtype=rt, body=b} ->
+                let result = case rt of
+                               Just n -> " " ++ n ++ " "
+                               Nothing -> " "
+                in (result ++ " " ++ name' ++
+                    "(" ++ printParams p ++ ") {\n" ++
+                     addIndents ( printExp b ) ++ "\n}")
+          A.Typedef {type1=typ1, type2=typ2} -> "typedef " ++ typ1 ++ " " ++ typ2 ++ ";"
+          A.Ifdef {mode=str} -> "#ifndef " ++ str
+          A.Define {defname=n, value=val} -> "#define " ++ n ++ " " ++ val
+          A.Include {file=s} -> "#include " ++ s
+        ) ++ "\n\n"
 
     printParams :: [A.Param] -> String
     printParams p = case p of
-        (A.Param []) -> ""
-        (A.Param [x]) -> printParam x
-        (A.Param (x:xs)) -> printParam x ++ ", " ++ printParams xs
+        [] -> ""
+        [x] -> printParam x
+        (x:xs) -> printParam x ++ ", " ++ printParams xs
 
     printParam :: A.Param -> String
-    printParam {pvar=v, ptype=t} = t ++ " " ++ v
+    printParam (A.Param {pvar=v, ptyp=t}) = t ++ " " ++ v
 
     printExp :: A.Exp -> String
     printExp e = case e of
         A.Seq s -> case s of
             [] -> ""
-            [s] -> printExp s ++ ";"
+            [s] -> printExp s
             (x:xs) -> printExp x ++ printExp (A.Seq xs)
-        A.Var x -> printVar e
-        A.VarDec {vars=vs, typ=t} -> t ++ " " ++ printArgs vs
-        A.IntExp x -> Show x
+        A.VarExp x -> printVar x
+        A.VarDec {vars=vs, vtyp=t} -> t ++ " " ++ printArgs vs
+        A.IntExp x -> show x
         A.FuncApply {func=f, args=a} -> f ++ "(" ++ printArgs a ++ ")"
-        A.OpExp {left=l, op=o, right=r}
+        A.OpExp {left=l, oper=o, right=r}
             -> printExp l ++ " " ++ printOp o ++ " " ++ printExp r
-        A.Negate v = "-" ++ printVar v
-        A.Assign {var=v, val=exp, op=o, typ=t} -> case t of
-            Just x -> t + " "
+        A.Negate v -> "-" ++ printVar v
+        A.Assign {var=v, val=exp, op=o, atyp=t} -> case t of
+            Just t -> t ++ " "
             Nothing -> ""
             ++ printVar v ++ case o of
-                Just x -> printOp x + "="
-                Nothing -> "="
-            ++ PrintExp exp ++ ";\n"
-        A.Typecast {var=v, typ=t}
+                Just x -> printOp x ++ " = "
+                Nothing -> " = "
+            ++ printExp exp ++ ";\n"
+        A.Typecast {var=v, newtyp=t}
             -> "(" ++ t ++ ")" ++ printVar v ++ ";"
         --A.ForExp {fvar=va, cond=c, inc=i, finit=f, floop=b} ->
         --"for " ++ v va ++ " = " ++ printExp f ++ "; " ++ printExp c
         --       ++ "; " ++ printExp i ++ " {\n  " ++ printExp b ++ "\n}"
         A.Parens e -> "( " ++ printExp e ++ " )"
         A.Return s -> "return " ++ printExp s ++ ";"
-
 
     printVar :: A.Var -> String
     printVar var = v var ++
@@ -73,15 +75,15 @@ module Export where
         And ->  "&&"
         Or -> "||"
         ExOr -> "^"
-        InAnd -> "&"
         InOr -> "|"
         LShift -> "<<"
         RShift -> ">>"
 
     printArgs :: [A.Var] -> String
     printArgs [] = ""
-    printArgs [x] = x
-    printArgs (x:xs) = x ++ " ," ++ printArgs xs
+    printArgs [x] = printVar x
+    printArgs (x:xs) = printVar x ++ " ," ++ printArgs xs
 
     addIndents :: String -> String
+    addIndents s = subRegex (mkRegex "\n") s "\n  "
 

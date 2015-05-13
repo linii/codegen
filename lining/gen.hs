@@ -1,141 +1,161 @@
 module Gen where
 
     import Ast as A
+    import Params as P
 
-    -- Parameters imported from curve25519
-    numWords = A.IntExp 10
     type32 = "crypto_int32"
     type64 = "crypto_int64"
 
-    genAst :: String -> A.Prog
-    genAst s =
-        let p = genParams s
-        in A.Prog [ genDefines,
-                    genIncludes,
-                    genZero,
-                    genOne,
-                    genAdd,
-                    genSub,
-                    genCopy,
-                    genSwap,
-                    genLoad3,
-                    genLoad4
-                    genFromBytes,
-                    genToBytes,
-                    genMul,
-                    genSquare]
+    genAst :: P.Params -> A.Prog
+    genAst p =
+        let n = len p
+        in A.Prog [ genInclude1,
+                    genInclude2,
+                    genIfdef,
+                    genTypedef n,
+                    genZero n,
+                    genOne n,
+                    genAdd n,
+                    genSub n,
+                    genCopy n,
+                    genSwap n,
+                    genLoad3 n,
+                    genLoad4 n,
+                    genFromBytes p,
+                    genToBytes p,
+                    genMul p,
+                    genSquare p
+                    ]
 
-    genParams :: String -> Params
-    genParams s = Params s
 
-    genTypedef :: Params -> A.Dec
-    genTypedef p = "crypto_int32" "fe[10]"
+    genInclude1 :: A.Dec
+    genInclude1 = A.Include "fe.h"
 
-    genIncludes :: Params -> A.Dec
-    genIncludes p = Include "fe.h"
+    genInclude2 :: A.Dec
+    genInclude2 = A.Include "crypto_int64.h"
+
+    genIfdef :: A.Dec
+    genIfdef = A.Ifdef "HAVE_TI_MODE"
+
+    genTypedef :: Int -> A.Dec
+    genTypedef n = A.Typedef "crypto_int32" ("fe[" ++ (show n) ++ "]")
 
     ---------------------
     -- Basic Functions --
     ---------------------
     -- duplicated exactly from supercpo ref10 implementation.
 
-    genZero' :: A.IntExp -> A.Param -> [A.Assign]
+    genZero' :: Int -> A.Param -> [A.Exp]
     genZero' 0 _ = []
-    genLoop n v' =
-        let var' = A.Var { v=pvar v', idx=Show (n - 1) }
-        in A.Assign { var=var', val=A.IntExp 0 }
-           ++ genZero' (n - 1) v
+    genZero' n v' =
+        let var' = A.Var { v=pvar v', idx=Just (show (n - 1)), typ=Nothing}
+        in [ A.Assign { var=var',
+                        val=A.IntExp 0,
+                        op=Nothing,
+                        atyp=Nothing } ]
+           ++ genZero' (n - 1) v'
 
-    genZero :: A.Dec
-    genZero =
+    genZero :: Int -> A.Dec
+    genZero numWords =
         let param = A.Param { pvar="h",
-                              ptyp=Just "fe" }
+                              ptyp="fe" }
             body' = A.Seq ( genZero' numWords param )
 
         in A.FuncDec { name="fe_0",
                        params=[param],
-                       result=Nothing,
+                       rtype=Nothing,
                        body=body' }
 
     ----------------------------------------------------------------------------
 
-    genOne' :: A.IntExp -> A.Param -> [A.Assign]
+    genOne' :: Int -> A.Param -> [A.Exp]
     genOne' 0 _ = []
-    genOne' n v' = case n of
-        1 -> let val' = A.IntExp 1
-        _ -> let val' = A.IntExp 0
-        in A.Assign { var=A.Var{ v=pvar v', idx=Show (n - 1) },
-                      val=val' }
-        ++ genOne' (n - 1) v
+    genOne' n v' =
+        let val' = case n of
+                    1 -> A.IntExp 1
+                    _ -> A.IntExp 0
+        in [ A.Assign { var=A.Var { v=pvar v', idx=Just (show (n - 1)), typ=Nothing},
+                        val=val',
+                        op=Nothing,
+                        atyp=Nothing } ]
+        ++ genOne' (n - 1) v'
 
-    genOne :: A.Dec
-    genOne p =
+    genOne :: Int ->  A.Dec
+    genOne numWords=
         let param = A.Param { pvar="h",
-                              ptyp=Just "fe" }
+                              ptyp="fe" }
             body' = A.Seq (genOne' numWords param)
 
         in A.FuncDec { name="fe_1",
                        params=[param],
-                       result=Nothing,
+                       rtype=Nothing,
                        body=body' }
 
     ----------------------------------------------------------------------------
 
-    genAssignFrom' :: A.IntExp -> A.Param -> A.Param -> [A.Assign]
+    genAssignFrom' :: Int -> A.Param -> A.Param -> [A.Exp]
     genAssignFrom' 0 _ _ = []
     genAssignFrom' n v1 v2 =
-        let var' = A.Var {v=pvar v1 ++ Show (n - 1), idx=Nothing, typ=typ32 }
-            val' = A.Var {v=pvar v2, idx=Show (n - 1)}
-        in A.Assign { var=var',
-                      val=val' }
+        let var' = A.Var {v=pvar v1 ++ show (n - 1), idx=Nothing, typ=Just type32 }
+            val' = A.Var {v=pvar v2, idx=Just (show (n - 1)), typ=Nothing }
+        in [ A.Assign { var=var',
+                        val=A.VarExp (val'),
+                        op=Nothing,
+                        atyp=Nothing } ]
            ++ genAssignTo' (n - 1) v1 v2
 
 
-    genAssignTo' :: A.IntExp -> A.Param -> A.Param -> [A.Assign]
+    genAssignTo' :: Int -> A.Param -> A.Param -> [A.Exp]
     genAssignTo' 0 _ _ = []
     genAssignTo' n v1 v2 =
-        let var' = A.Var { v=pvar v1, idx = Show (n - 1) }
-            val' = A.Var { v=pvar v2 ++ Show (n - 1), idx=Nothing }
-        in A.Assign { var=var',
-                      val=val' }
+        let var' = A.Var { v=pvar v1, idx = Just (show (n - 1)), typ=Nothing}
+            val' = A.Var { v=pvar v2 ++ show (n - 1), idx=Nothing, typ=Nothing}
+        in [A.Assign { var=var',
+                       val=A.VarExp (val'),
+                       op=Nothing,
+                       atyp=Nothing } ]
            ++ genAssignTo' (n - 1) v1 v2
 
     ----------------------------------------------------------------------------
 
-    genAddSub' :: A.IntExp -> A.Param -> A.Param -> A.Op -> [A.Assign]
+    genAddSub' :: Int -> A.Param -> A.Param -> A.Param -> A.Op -> [A.Exp]
     genAddSub' 0 _ _ _ _  = []
-    genAddSub' n v1 v2 v3 oper =
-        let var' = A.Var { v=pvar v1 ++ Show n, idx=Nothing, typ=type32 }
-            op' = A.OpExp { left=A.Var{ v=pvar v2 ++ Show n } ,
-                            op=oper,
-                            right=A.Var{ v=pvar v3++ Show n } }
-        in A.Assign { var=var',
-                      val=op' }
-           ++ genAddSub' (n - 1) v1 v2 v3
+    genAddSub' n v1 v2 v3 oper' =
+        let var' = A.Var { v=pvar v1 ++ show n, idx=Nothing, typ=Just type32 }
+            op' = A.OpExp { left=A.VarExp (A.Var{ v=pvar v2 ++ show n,
+                                                  idx=Nothing, typ=Nothing } ),
+                            oper=oper',
+                            right=A.VarExp (A.Var{ v=(pvar v3 )++ show n,
+                                                   idx=Nothing, typ=Nothing } )}
+        in [ A.Assign { var=var',
+                        val=op' ,
+                        op=Nothing,
+                        atyp=Nothing } ]
+           ++ genAddSub' (n - 1) v1 v2 v3 oper'
 
-    genAdd :: A.Dec
-    genAdd =
+    genAdd :: Int -> A.Dec
+    genAdd numWords =
         let h = A.Param { pvar="h",
-                          ptyp=Just "fe"}
+                          ptyp="fe"}
             f = A.Param { pvar="f",
-                          ptyp=Just "fe"}
+                          ptyp="fe"}
             g = A.Param { pvar="g",
-                          ptyp=Just "fe"}
+                          ptyp="fe"}
 
-            body' = A.Seq [ genAssignFrom numWords f f,
-                            genAssignFrom numWords g g,
-                            genAddSub' numWords f g A.Plus,
-                            genAssignTo numWords h h ]
+            body' = A.Seq ( genAssignFrom' numWords f f ++
+                            genAssignFrom' numWords g g ++
+                            genAddSub' numWords h f g A.Plus ++
+                            genAssignTo' numWords h h )
 
         in A.FuncDec { name="fe_add",
                        params=[h, f, g],
                        rtype=Nothing,
                        body=body' }
 
-    ----------------------------------------------------------------------------
+    --------------------------------------------------------------------------
 
-    genSub :: A.Dec
-    genSub =
+    genSub :: Int -> A.Dec
+    genSub numWords =
         let h = A.Param { pvar="h",
                           ptyp="fe" }
             f = A.Param { pvar="f",
@@ -143,10 +163,10 @@ module Gen where
             g = A.Param { pvar="g",
                           ptyp="fe" }
 
-            body' = A.Seq [ genAssignFrom numWords f f,
-                            genAssignFrom numWords g g,
-                            genAddSub' numWords f g A.Minus,
-                            genAssignTo numWords h h ]
+            body' = A.Seq ( genAssignFrom' numWords f f ++
+                            genAssignFrom' numWords g g ++
+                            genAddSub' numWords h f g A.Minus ++
+                            genAssignTo' numWords h h )
 
         in A.FuncDec { name="fe_sub",
                        params=[h, f, g],
@@ -155,25 +175,25 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
-    genCopy :: A.Dec
-    genCopy =
+    genCopy :: Int -> A.Dec
+    genCopy numWords =
         let f = A.Param { pvar="f",
                           ptyp="fe" }
             h = A.Param { pvar="h",
                           ptyp="fe" }
 
-            body' = A.Seq [ genAssignFrom numWords f f,
-                            genAssignTo nuumWords h f ]
+            body' = A.Seq ( genAssignFrom' numWords f f ++
+                            genAssignTo' numWords h f )
 
         in A.FuncDec { name="fe_copy",
-                       params=[h, f]
+                       params=[h, f],
                        rtype=Nothing,
                        body=body'}
 
     ----------------------------------------------------------------------------
 
-    genSwap :: A.Dec
-    genSwap =
+    genSwap :: Int -> A.Dec
+    genSwap numWords =
         let f = A.Param { pvar="f",
                           ptyp="fe" }
             g = A.Param { pvar="g",
@@ -181,7 +201,7 @@ module Gen where
             b = A.Param { pvar="b",
                           ptyp="unsigned int" }
 
-            body' = ""
+            body' = A.IntExp 0
 
         in A.FuncDec { name="fe_cswap",
                        params=[f, g, b],
@@ -190,26 +210,103 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
-    genLoad3 :: A.Dec
-    genLoad3 =
+    genLoad3 :: Int -> A.Dec
+    genLoad3 numWords =
         let param = A.Param { pvar="in",
-                              ptyp="const unsigned char" }
-            body' = ""
+                              ptyp="const unsigned char * " }
+            body' = A.IntExp 0
 
         in A.FuncDec { name="load_3",
                        params= [param],
-                       rtype="static crypto_uint64",
+                       rtype=Just "static crypto_uint64",
                        body=body' }
 
     ----------------------------------------------------------------------------
 
-    genLoad4  :: A.Dec
-    genLoad4 =
+    genLoad4 :: Int -> A.Dec
+    genLoad4 numWords =
         let param = A.Param { pvar="in",
-                              ptyp="const unsigned char" }
-            body' = ""
+                              ptyp="const unsigned char * " }
 
-        in A.FuncDec { name="load_3",
+            body' = A.IntExp 0
+
+        in A.FuncDec { name="load_4",
                        params= [param],
-                       rtype="static crypto_uint64",
+                       rtype=Just "static crypto_uint64",
                        body=body' }
+
+    ----------------------------------------------------------------------------
+
+    genFromBytes :: P.Params -> A.Dec
+    genFromBytes p =
+        let h = A.Param { pvar="h",
+                          ptyp="fe" }
+            s = A.Param { pvar="s",
+                          ptyp="const unsigned char *"}
+            numWords = len p
+
+
+            body' = A.Seq ( genAssignTo' numWords h h )
+
+        in A.FuncDec { name="fe_frombytes",
+                       params=[h, s],
+                       rtype=Nothing,
+                       body=body'}
+
+
+    ----------------------------------------------------------------------------
+
+    genToBytes :: P.Params -> A.Dec
+    genToBytes p =
+        let h = A.Param { pvar="h",
+                          ptyp="fe" }
+            s = A.Param { pvar="s",
+                          ptyp="unsigned char *"}
+            numWords = len p
+
+            body' = A.Seq ( genAssignFrom' numWords h h )
+
+       in A.FuncDec { name="fe_tobytes",
+                      params=[s, h],
+                      rtype=Nothing,
+                      body=body'}
+
+    ----------------------------------------------------------------------------
+
+    genMul ::  P.Params -> A.Dec
+    genMul p =
+        let h = A.Param { pvar="h",
+                          ptyp="fe" }
+            f = A.Param { pvar="f",
+                          ptyp="fe" }
+            g = A.Param { pvar="g",
+                          ptyp="fe" }
+            numWords = len p
+
+            body' = A.Seq ( genAssignFrom' numWords f f ++
+                            genAssignFrom' numWords g g ++
+                            genAssignTo' numWords h h )
+
+        in A.FuncDec { name="fe_mul",
+                       params=[h, f, g],
+                       rtype=Nothing,
+                       body=body' }
+
+    ----------------------------------------------------------------------------
+
+    genSquare ::  P.Params -> A.Dec
+    genSquare p =
+        let h = A.Param { pvar="h",
+                          ptyp="fe" }
+            f = A.Param { pvar="f",
+                          ptyp="fe" }
+            numWords = len p
+
+            body' = A.Seq  ( genAssignFrom' numWords f f ++
+                             genAssignTo' numWords h h )
+
+        in A.FuncDec { name="fe_sq",
+                       params=[h, f],
+                       rtype=Nothing,
+                       body=body' }
+
