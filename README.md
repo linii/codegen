@@ -24,4 +24,4 @@ Outputs curve25519 optimized code in C.
 - X load_3 
 - X load_4
 - X fromBytes
-- started toBytes
+- X toBytes (all except small bit at the end)

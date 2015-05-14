@@ -294,6 +294,7 @@ module Gen where
                                          idx=Nothing})]
                         ++ genVarDecs' (n - 1) v1
 
+
     -- arguments:
     -- load pattern
     -- cumulative representation/size pattern from param for curve25519 (fixed)
@@ -328,6 +329,7 @@ module Gen where
         -- full assignment expression
         in [A.Assign { var=var', val=val', op=Nothing, atyp=Nothing}]
             ++ genFromBytesLoad' xs ys (n + 1) (cumu + x) name
+
 
     genFromBytesCarries' :: [Int] -> [Int] -> Int -> [A.Exp]
     genFromBytesCarries' [] [] _ = []
@@ -365,10 +367,12 @@ module Gen where
         in [s1, s2, s3] ++ [A.Newline] ++ genFromBytesCarries' xs ys 0
     genFromBytesCarries' _ _ _ = error ("oh noes, incorrect format")
 
+    --- small helper function for extracting odd, even elements of lists
     oddEvens :: [Int] -> ([Int], [Int])
     oddEvens [] = ([], [])
     oddEvens [x] = ([x], [])
     oddEvens (x:y:xs) = (x:xp, y:yp) where (xp, yp) = oddEvens xs
+
 
     genFromBytes :: P.Params -> A.Dec
     genFromBytes p =
@@ -424,6 +428,7 @@ module Gen where
                         val=r, op=Nothing, atyp=Nothing}]
             ++ genToBytesPlace' (n + 1) xs v1 v2
 
+
     genToBytesCarry' :: Int -> [Int] -> [A.Exp]
     genToBytesCarry' _ [] = []
     genToBytesCarry' n (x:xs) =
@@ -437,11 +442,80 @@ module Gen where
             s1 = A.Assign { var=var', val= s1val, op=Nothing, atyp=Nothing }
             s2 = case n of
                 9 -> A.Newline
-                _ -> A.Assign { var=h'', val = A.VarExp var', op=Just A.Plus, atyp=Nothing}
+                _ -> A.Assign { var=h'',
+                                val = A.VarExp var',
+                                op=Just A.Plus,
+                                atyp=Nothing }
 
-            s3 = A.Assign { var=h', val=s3val, op=Just A.Minus, atyp=Nothing}
+            s3 = A.Assign { var=h',
+                            val=s3val,
+                            op=Just A.Minus,
+                            atyp=Nothing }
 
-        in [s1, s2, s3] ++ [A.Newline ] ++ genToBytesCarry' (n + 1) xs
+        in [s1, s2, s3] ++ [A.Newline] ++ genToBytesCarry' (n + 1) xs
+
+
+    genToBytesMod' :: [Int] -> [Int] -> [Int] -> Int -> Int -> [A.Exp]
+    genToBytesMod' [] [] _ _ _ = []
+    genToBytesMod' (x:xs) (y:ys) (z:zs) n1 n2 =
+        let var' = A.VarExp A.Var { v="h" ++ show n1, idx=Nothing, typ=Nothing }
+
+            x1 = A.Var { v="s", idx=Just (show n2), typ=Nothing }
+            x2 = A.Var { v="s", idx=Just (show (n2 + 1)), typ=Nothing }
+            x3 = A.Var { v="s", idx=Just (show (n2 + 2)), typ=Nothing }
+            x4 = case x of
+                    4 -> A.Var { v="s", idx=Just (show (n2 + 3)), typ=Nothing }
+                    _ -> A.Var { v="", idx=Nothing, typ=Nothing }
+
+            val' = 8 * n2 - z  -- how many bits are left over
+            a1 = A.OpExp { left=var',
+                           right=A.IntExp val',
+                           oper=A.RShift}
+
+            a2 = A.OpExp { left=var',
+                           right=A.IntExp (val' + 8),
+                           oper=A.RShift}
+
+            var'' = A.Var { v="h" ++ show (n1 + 1), idx=Nothing, typ=Nothing }
+
+            a3base = A.OpExp { left=var',
+                               right=A.IntExp (val' + 16),
+                               oper=A.RShift }
+
+            leftover = case x of
+                4 -> y - (val' + 24)
+                _ -> y - (val' + 16)
+
+
+            a' = A.OpExp { left=A.VarExp var'',
+                           right=A.IntExp leftover,
+                           oper=A.LShift }
+
+            final = case leftover of
+                8 -> a3base
+                _ -> A.OpExp { left=Parens a3base, right=a', oper=A.Or }
+
+            a3 = case x of
+                    3 -> final
+                    _ -> a3base
+
+            a4' = A.OpExp { left=var',
+                            right=A.IntExp (val' + 24),
+                            oper=A.RShift }
+
+            a4 = case x of
+                    4 -> A.OpExp { left=a4', right=a', oper=A.Or }
+                    _ -> A.Newline
+
+            s1 = A.Assign { var=x1, val=a1, op=Nothing, atyp=Nothing}
+            s2 = A.Assign { var=x2, val=a2, op=Nothing, atyp=Nothing}
+            s3 = A.Assign { var=x3, val=a3, op=Nothing, atyp=Nothing}
+            s4 = case x of
+                    4-> A.Assign { var=x4, val=a4, op=Nothing, atyp=Nothing}
+                    _-> A.Newline
+
+        in [s1, s2, s3, s4] ++ [A.Newline] ++ genToBytesMod' xs ys zs (n1 + 1) (n2 + x)
+
 
     genToBytes :: P.Params -> A.Dec
     genToBytes p =
@@ -452,7 +526,8 @@ module Gen where
             numWords = len p
             rep' = rep p
             o = offset p
-
+            loadpattern = [4, 3, 3, 3, 3, 4, 3, 3, 3, 3]
+            cumulative = scanl1 (+) (0:(rep p))
             lastvar' = A.Var { v="h"++show (numWords - 1), idx=Nothing, typ=Nothing }
 
             mod1 = A.OpExp { left=A.IntExp o,
@@ -480,7 +555,8 @@ module Gen where
                             genVarDecs' numWords carry ++ [A.Newline] ++
                             [wrap] ++
                             genToBytesPlace' 0 rep' q h ++ [A.Newline] ++
-                            genToBytesCarry' 0 rep' )
+                            genToBytesCarry' 0 rep' ++
+                            genToBytesMod' loadpattern rep' cumulative 0 0)
 
        in A.FuncDec { name="fe_tobytes",
                       params=[s, h],
