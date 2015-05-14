@@ -20,8 +20,8 @@ Outputs curve25519 optimized code in C.
 - X genMove
 
 ### 5/13 (worked 7 hours)
-- finished preliminary functions
+- finished preliminary functions:
 - X load_3 
 - X load_4
-- fromBytes
-- toBytes
+- X fromBytes
+- started toBytes
