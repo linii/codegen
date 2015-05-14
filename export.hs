@@ -46,10 +46,7 @@ module Export where
         A.OpExp {left=l, oper=o, right=r}
             -> printExp l ++ " " ++ printOp o ++ " " ++ printExp r
         A.Negate v -> "-" ++ printVar v
-        A.Assign {var=v, val=exp, op=o, atyp=t} -> case t of
-            Just t -> t ++ " "
-            Nothing -> ""
-            ++ printVar v ++ case o of
+        A.Assign {var=v, val=exp, op=o} -> printVar v ++ case o of
                 Just x -> " " ++ printOp x ++ "= "
                 Nothing -> " = "
             ++ printExp exp ++ ";"

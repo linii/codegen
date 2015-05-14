@@ -22,7 +22,7 @@ module Ast where
       | FuncApply {func :: String, args :: [Exp]}
       | OpExp {left :: Exp, oper :: Op, right :: Exp}
       | Negate (Var)
-      | Assign {var :: Var, val :: Exp, op :: Maybe Op, atyp :: Maybe String}
+      | Assign {var :: Var, val :: Exp, op :: Maybe Op }
       | Typecast {tvar :: Exp, newtyp :: String}
       | For {from :: Exp, to :: Exp, loopvar :: Var, looptype :: String, incr :: Exp}
       | Parens (Exp)
