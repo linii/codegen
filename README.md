@@ -29,6 +29,6 @@ Outputs curve25519 optimized code in C.
 ### 5/14 (worked 5 hours)
 - started Mul
 - X precomp wraparound 
-- precomp computation
+- X precomp computation
 - mul computations 
 - mul sums 

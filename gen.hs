@@ -1,5 +1,7 @@
 module Gen where
 
+    import Data.List
+
     import Ast as A
     import Params as P
 
@@ -86,26 +88,6 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
-    genSimpleAssign :: Int -> A.GenVar -> A.GenVar -> [A.Exp]
-    genSimpleAssign 0 _ _ = []
-    genSimpleAssign n v1 v2 =
-        let var' = case v1 of
-                    ParamX (A.Param {pvar=pv, ptyp=ptype}) ->
-                        A.Var { v=pv, idx = Just (show (n - 1)), typ=Nothing}
-                    VarX (A.Var {v=v1n, idx=i, typ=t}) ->
-                        A.Var { v=v1n ++ show (n - 1), idx = Nothing, typ=t}
-            val' = case v2 of
-                    ParamX (A.Param {pvar=pv, ptyp=ptype}) ->
-                        A.Var { v= pv, idx=Just (show (n - 1)), typ=Nothing}
-                    VarX (A.Var {v=v2n, idx=i, typ=t}) ->
-                        A.Var { v=v2n ++ show (n - 1), idx=Nothing, typ=Nothing}
-            assign = A.Assign { var=var',
-                                val=A.VarExp (val'),
-                                op=Nothing }
-        in genSimpleAssign (n - 1) v1 v2 ++ [assign]
-
-    --------------------------------------------------------------------------
-
     genAdd :: Int -> A.Dec
     genAdd numWords =
         let h = A.Param { pvar="h", ptyp="fe" }
@@ -173,14 +155,6 @@ module Gen where
 
     ----------------------------------------------------------------------------
 
-    genAll' :: Int -> A.Var -> A.Param -> A.Op -> [A.Exp]
-    genAll' 0 _ _ _ = []
-    genAll' n v1 v2 op' =
-        let var' = A.Var {v=(v v1) ++ (show (n - 1)), idx=Nothing, typ=Nothing}
-            val' = A.VarExp A.Var {v=pvar v2, idx=Nothing, typ=Nothing}
-            assign = A.Assign { var=var', val=val', op=Just op' }
-        in genAll' (n - 1) v1 v2 op' ++ [assign]
-
     genSwap :: Int -> A.Dec
     genSwap numWords =
         let f = A.Param { pvar="f", ptyp="fe" }
@@ -206,38 +180,6 @@ module Gen where
                        params = [f, g, b],
                        rtype  = Nothing,
                        body   = body' }
-
-    ----------------------------------------------------------------------------
-
-    genOper :: Int -> A.GenVar -> A.GenVar -> A.GenVar -> A.Op -> [A.Exp]
-    genOper 0 _ _ _ _  = []
-    genOper n v1 v2 v3 oper' =
-        let id    = case v1 of
-                    ParamX (A.Param {pvar=asdf, ptyp=paramtype}) -> Just (show (n - 1))
-                    _ -> Nothing
-            vtyp  = case v1 of
-                    VarX (A.Var {v=v1, idx=i, typ=t}) -> t
-                    _ -> Nothing
-            vname = case v1 of
-                    ParamX (A.Param {pvar=v1name, ptyp=typ}) -> v1name
-                    VarX (A.Var {v=v1n, idx=i, typ=t})-> v1n ++ show (n - 1)
-            v2'   = case v2 of
-                    VarX (A.Var {v=v2name, typ=t}) -> v2name
-                    ParamX (A.Param {pvar=v2n, ptyp=typ}) -> v2n
-            v3'   = case v3 of
-                    VarX (A.Var {v=v3name, typ=t}) -> v3name
-                    ParamX (A.Param {pvar=v3n, ptyp=typ}) -> v3n
-
-            var' = A.Var { v=vname, idx=id, typ=vtyp}
-            val' = A.OpExp { left=A.VarExp A.Var{ v=v2' ++ show (n - 1),
-                                                  idx=Nothing, typ=Nothing },
-                             oper=oper',
-                             right=A.VarExp A.Var{ v=v3' ++ show (n - 1),
-                                                    idx=Nothing, typ=Nothing } }
-            assign = A.Assign { var=var',
-                                val=val',
-                                op=Nothing }
-        in genOper (n - 1) v1 v2 v3 oper' ++ [assign]
 
     ----------------------------------------------------------------------------
 
@@ -290,12 +232,8 @@ module Gen where
                        body   = body'}
 
     ----------------------------------------------------------------------------
-
-    genVarDecs' :: Int -> Var -> [A.Exp]
-    genVarDecs' 0 _  = []
-    genVarDecs' n v1 =
-        let var' = A.Var { v = (v v1) ++ (show (n - 1)), typ=(typ v1), idx=Nothing}
-        in genVarDecs' (n - 1) v1 ++ [A.VarDec var' ]
+    -------------------------------FROM_BYTES-----------------------------------
+    ----------------------------------------------------------------------------
 
     -- arguments:
     -- load pattern
@@ -369,12 +307,6 @@ module Gen where
         in [s1, s2, s3] ++ [A.Newline] ++ genFromBytesCarries' xs ys 0
     genFromBytesCarries' _ _ _ = error ("oh noes, incorrect format")
 
-    --- small helper function for extracting odd, even elements of lists
-    oddEvens :: [Int] -> ([Int], [Int])
-    oddEvens [] = ([], [])
-    oddEvens [x] = ([x], [])
-    oddEvens (x:y:xs) = (x:xp, y:yp) where (xp, yp) = oddEvens xs
-
     genFromBytes :: P.Params -> A.Dec
     genFromBytes p =
         let rep' = rep p
@@ -404,11 +336,13 @@ module Gen where
                             s4 ++ [A.Newline] ++
                             s5 )
 
-        in A.FuncDec { name="fe_frombytes",
-                       params=[h, s],
-                       rtype=Nothing,
-                       body=body'}
+        in A.FuncDec { name   = "fe_frombytes",
+                       params = [h, s],
+                       rtype  = Nothing,
+                       body   = body'}
 
+    ----------------------------------------------------------------------------
+    ---------------------------------TO_BYTES-----------------------------------
     ----------------------------------------------------------------------------
 
     genToBytesPlace' :: Int -> [Int] -> A.Var -> A.Param -> [A.Exp]
@@ -427,7 +361,6 @@ module Gen where
                                 op=Nothing }
         in  [assign] ++ genToBytesPlace' (n + 1) xs v1 v2
 
-
     genToBytesCarry' :: Int -> [Int] -> [A.Exp]
     genToBytesCarry' _ [] = []
     genToBytesCarry' n (x:xs) =
@@ -444,13 +377,11 @@ module Gen where
                     _ -> A.Assign { var =h'',
                                     val = A.VarExp var',
                                     op =Just A.Plus }
-
             s3 = A.Assign { var=h',
                             val=s3val,
                             op=Just A.Minus }
 
         in [s1, s2, s3] ++ [A.Newline] ++ genToBytesCarry' (n + 1) xs
-
 
     genToBytesMod' :: [Int] -> [Int] -> [Int] -> Int -> Int -> [A.Exp]
     genToBytesMod' [] [] _ _ _ = []
@@ -468,22 +399,17 @@ module Gen where
             a1  = A.OpExp { left=var',
                            right=A.IntExp val',
                            oper=A.RShift}
-
             a2 = A.OpExp { left=var',
                            right=A.IntExp (val' + 8),
                            oper=A.RShift}
 
             var'' = A.Var { v="h" ++ show (n1 + 1), idx=Nothing, typ=Nothing }
-
             a3base = A.OpExp { left=var',
                                right=A.IntExp (val' + 16),
                                oper=A.RShift }
-
             leftover = case x of
                 4 -> y - (val' + 24)
                 _ -> y - (val' + 16)
-
-
             a' = A.OpExp { left=A.VarExp var'',
                            right=A.IntExp leftover,
                            oper=A.LShift }
@@ -495,11 +421,9 @@ module Gen where
             a3 = case x of
                     3 -> final
                     _ -> a3base
-
             a4' = A.OpExp { left=var',
                             right=A.IntExp (val' + 24),
                             oper=A.RShift }
-
             a4 = case x of
                     4 -> A.OpExp { left=Parens a4', right=Parens a', oper=A.Or }
                     _ -> A.Newline
@@ -531,22 +455,22 @@ module Gen where
             h' = A.Var {v="h", idx=Nothing, typ=Just type32}
             lastvar' = A.Var { v="h"++show (numWords - 1), idx=Nothing, typ=Nothing }
 
-            mod1 = A.OpExp { left=A.IntExp o,
+            mod1  = A.OpExp { left=A.IntExp o,
                              right=A.VarExp lastvar',
                              oper=A.Times }
 
             cast' = A.Typecast { tvar=A.IntExp 1,
                                  newtyp=type32}
-            mod2 = A.OpExp { left = Parens cast',
-                             right=A.IntExp ((last rep' ) - 1),
-                             oper=A.LShift }
+            mod2  = A.OpExp { left= Parens cast',
+                              right=A.IntExp ((last rep' ) - 1),
+                              oper=A.LShift }
 
-            mod = A.OpExp { left=mod1,
-                            right= Parens mod2,
-                            oper=A.Plus }
+            mod  = A.OpExp { left=mod1,
+                             right= Parens mod2,
+                             oper=A.Plus }
 
-            wrap = A.Assign { var = A.Var{ v=v q, idx=Nothing, typ=Nothing },
-                              val = A.OpExp { left=mod,
+            wrap = A.Assign { var= A.Var{ v=v q, idx=Nothing, typ=Nothing },
+                              val= A.OpExp { left=mod,
                                               right=A.IntExp (last rep'),
                                               oper=A.RShift },
                               op=Nothing }
@@ -565,30 +489,82 @@ module Gen where
                             s6 ++ [A.Newline] ++
                             s7 )
 
-       in A.FuncDec { name="fe_tobytes",
-                      params=[s, h],
-                      rtype=Nothing,
-                      body=body'}
+       in A.FuncDec { name   = "fe_tobytes",
+                      params = [s, h],
+                      rtype  = Nothing,
+                      body   = body'}
 
+    ----------------------------------------------------------------------------
+    ---------------------------- MULTIPLICATION --------------------------------
     ----------------------------------------------------------------------------
 
     genMulPreOffset' :: A.Var -> Int -> Int -> [A.Exp]
     genMulPreOffset' _ _ 0 = []
     genMulPreOffset' v1 offset n =
         let var' = A.Var { v= (v v1) ++ show (n - 1) ++ "_" ++ show offset,
-                           idx=Nothing, typ=typ v1}
+                           idx=Nothing,
+                           typ=typ v1}
             var'' = A.Var { v= (v v1) ++ show (n - 1), idx=Nothing, typ=Nothing}
             val' = A.OpExp { left=A.IntExp offset,
                              right=A.VarExp var'',
                              oper=A.Times }
-        in [A.Assign {var=var', val=val', op=Nothing} ] ++
-            genMulPreOffset' v1 offset (n - 1)
+            assign = A.Assign { var=var', val=val', op=Nothing }
+        in genMulPreOffset' v1 offset (n - 1) ++ [assign]
 
-    genMulPrecomp' :: [A.Exp]
-    genMulPrecomp' = [A.Newline]
 
-    genMulComps' :: [A.Exp]
-    genMulComps' = [A.Newline]
+    genMulRep' :: Int -> Int -> [Int] -> [Int] -> [Int] -> [[Int]]
+    genMulRep' _ _ _ [] _ = []
+    genMulRep' n m p (x:xs) (y:ys) =
+        -- want to calculate (x + p) - y for all p, y  until p is exhausted
+        let l1 = replicate n x
+            l  = zipWith (-) (map (`mod` m) (zipWith (+) l1 p)) (y:ys)
+        in l : genMulRep' n m p xs ys
+
+    genMulPrecomp' :: A.Param -> [[Int]] -> Int -> [A.Exp]
+    genMulPrecomp' _ [] _ = []
+    genMulPrecomp' v1 (x:xs) i =
+        let var = A.Var { v=pvar v1 ++ show i, idx=Nothing, typ=Nothing }
+            leftovers = delete 0 (nub x)
+            l = genMulPrecomp'' var leftovers
+        in l ++ genMulPrecomp' v1 xs (i + 1)
+
+    -- make new precomputations for each fi
+    genMulPrecomp'' :: A.Var -> [Int] -> [A.Exp]
+    genMulPrecomp'' _ [] = []
+    genMulPrecomp'' v1 (x:xs) =
+        let var' = A.Var { v= v v1 ++ "_" ++ show (2^x) , idx=Nothing, typ=Just type32 }
+            op = A.OpExp { left= A.IntExp (2^x),
+                           right= A.VarExp v1,
+                           oper= A.Times }
+            assign = A.Assign { var = var', val=op, op=Nothing }
+        in [assign] ++ genMulPrecomp'' v1 xs
+
+
+    genMulComps' :: A.Var -> A.Var -> Int -> Int -> Int -> Int -> [Int] -> [A.Exp]
+    genMulComps' _ _ _ _ _ _ [] = []
+    genMulComps' v1 v2 l o v2idx v1idx (x:xs) =
+        let v1' = A.Var {v=v v1++show v1idx, idx=Nothing, typ=Nothing}
+            v2' = A.Var {v=v v2++show v2idx, idx=Nothing, typ=Nothing}
+
+            (m1, var1) = if (x /= 0)
+                            then (2^x, "_" ++ (show (2^x)))
+                         else (1, "")
+            (m2, var2) = if (v1idx + v2idx >= l && o > 1)
+                            then (o, "_" ++ show o)
+                         else (1, "")
+            m = if (m1 == 1 && m2 == 1)
+                    then ""
+                else "_" ++ show (m1 * m2)
+
+            finalleft = A.Var { v=v v1'++ v v2' ++ m, idx=Nothing, typ=Nothing }
+            finalv1   = A.Var { v=v v2' ++ var2, idx=Nothing, typ=Nothing }
+            finalv2   = A.Var { v=v v1' ++ var1, idx=Nothing, typ=Nothing }
+
+            cast      = A.Typecast { tvar= A.VarExp finalv1, newtyp=type64 }
+            op        = A.OpExp    { left= A.VarExp finalv2, right= cast, oper=A.Times }
+            assign    = A.Assign   { var=finalleft, val=op, op=Nothing }
+
+        in [assign] ++ genMulComps' v1 v2 l o (v2idx + 1) v1idx xs
 
     genMulSums' :: [A.Exp]
     genMulSums' = [A.Newline]
@@ -609,12 +585,21 @@ module Gen where
 
             numWords = len p
             o = offset p
+            r = rep p
+            mod = base p
+
+            accu = scanl1 (+) r
+            places = init ( 0 : accu )
+            r' = genMulRep' numWords mod places places (places ++ places)
+            l1 = [0 .. numWords  - 1]
 
             s1 = genSimpleAssign numWords (VarX f') (ParamX f)
             s2 = genSimpleAssign numWords (VarX g') (ParamX g)
-            s3 = reverse (genMulPreOffset' g' o numWords)
-            s4 = genMulPrecomp'
-            s5 = genMulComps'
+            s3 = genMulPreOffset' g' o numWords
+            s4 = genMulPrecomp' f r' 0
+
+            zipped = zipWith ( genMulComps' f' g' numWords o 0 ) l1 r'
+            s5 = concat zipped
             s6 = genMulSums'
             s7 = genMulCarries'
             s9 = genVarDecs' numWords carry
@@ -626,11 +611,13 @@ module Gen where
                             s7 ++ [A.Newline] ++ s8 ++ [A.Newline] ++
                             s9 )
 
-        in A.FuncDec { name="fe_mul",
-                       params=[h, f, g],
-                       rtype=Nothing,
-                       body=body' }
+        in A.FuncDec { name   = "fe_mul",
+                       params = [h, f, g],
+                       rtype  = Nothing,
+                       body   = body' }
 
+    ----------------------------------------------------------------------------
+    -------------------------------- SQUARING ----------------------------------
     ----------------------------------------------------------------------------
 
     genSquareCoeffs' :: [A.Exp]
@@ -677,14 +664,16 @@ module Gen where
                              s7 ++ [A.Newline] ++
                              s8 )
 
-        in A.FuncDec { name="fe_sq",
-                       params=[h, f],
-                       rtype=Nothing,
-                       body=body' }
+        in A.FuncDec { name   ="fe_sq",
+                       params =[h, f],
+                       rtype  =Nothing,
+                       body   =body' }
 
-    ---------------------------------------------------------------------------
-    -- https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_scalarmult/curve25519/ref10/fe_invert_curve25519_ref10.c
-    -- there seems to be some things missing...
+    ----------------------------------------------------------------------------
+    ------------------------------ INVERTING -----------------------------------
+    ----------------------------------------------------------------------------
+    -- source code: https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_scalarmult/curve25519/ref10/fe_invert_curve25519_ref10.c
+    -- TODO there seems to be some things missing...
 
     genInvert :: P.Params -> A.Dec
     genInvert p =
@@ -693,8 +682,82 @@ module Gen where
 
             body' = A.IntExp 0
 
-        in A.FuncDec { name="fe_invert",
+        in A.FuncDec { name  ="fe_invert",
                        params=[out, z],
-                       rtype=Nothing,
-                       body=body' }
+                       rtype =Nothing,
+                       body  =body' }
 
+
+    ----------------------------------------------------------------------------
+    ----------------------------- HELPER FUNCTIONS -----------------------------
+    ----------------------------------------------------------------------------
+
+    genSimpleAssign :: Int -> A.GenVar -> A.GenVar -> [A.Exp]
+    genSimpleAssign 0 _ _ = []
+    genSimpleAssign n v1 v2 =
+        let var' = case v1 of
+                    ParamX (A.Param {pvar=pv, ptyp=ptype}) ->
+                        A.Var { v=pv, idx = Just (show (n - 1)), typ=Nothing}
+                    VarX (A.Var {v=v1n, idx=i, typ=t}) ->
+                        A.Var { v=v1n ++ show (n - 1), idx = Nothing, typ=t}
+            val' = case v2 of
+                    ParamX (A.Param {pvar=pv, ptyp=ptype}) ->
+                        A.Var { v= pv, idx=Just (show (n - 1)), typ=Nothing}
+                    VarX (A.Var {v=v2n, idx=i, typ=t}) ->
+                        A.Var { v=v2n ++ show (n - 1), idx=Nothing, typ=Nothing}
+            assign = A.Assign { var=var',
+                                val=A.VarExp (val'),
+                                op=Nothing }
+        in genSimpleAssign (n - 1) v1 v2 ++ [assign]
+
+
+    genOper :: Int -> A.GenVar -> A.GenVar -> A.GenVar -> A.Op -> [A.Exp]
+    genOper 0 _ _ _ _  = []
+    genOper n v1 v2 v3 oper' =
+        let id    = case v1 of
+                    ParamX (A.Param {pvar=asdf, ptyp=paramtype}) -> Just (show (n - 1))
+                    _ -> Nothing
+            vtyp  = case v1 of
+                    VarX (A.Var {v=v1, idx=i, typ=t}) -> t
+                    _ -> Nothing
+            vname = case v1 of
+                    ParamX (A.Param {pvar=v1name, ptyp=typ}) -> v1name
+                    VarX (A.Var {v=v1n, idx=i, typ=t})-> v1n ++ show (n - 1)
+            v2'   = case v2 of
+                    VarX (A.Var {v=v2name, typ=t}) -> v2name
+                    ParamX (A.Param {pvar=v2n, ptyp=typ}) -> v2n
+            v3'   = case v3 of
+                    VarX (A.Var {v=v3name, typ=t}) -> v3name
+                    ParamX (A.Param {pvar=v3n, ptyp=typ}) -> v3n
+
+            var' = A.Var { v=vname, idx=id, typ=vtyp}
+            val' = A.OpExp { left=A.VarExp A.Var{ v=v2' ++ show (n - 1),
+                                                  idx=Nothing, typ=Nothing },
+                             oper=oper',
+                             right=A.VarExp A.Var{ v=v3' ++ show (n - 1),
+                                                    idx=Nothing, typ=Nothing } }
+            assign = A.Assign { var=var',
+                                val=val',
+                                op=Nothing }
+        in genOper (n - 1) v1 v2 v3 oper' ++ [assign]
+
+    genVarDecs' :: Int -> Var -> [A.Exp]
+    genVarDecs' 0 _  = []
+    genVarDecs' n v1 =
+        let var' = A.Var { v = (v v1) ++ (show (n - 1)), typ=(typ v1), idx=Nothing}
+        in genVarDecs' (n - 1) v1 ++ [A.VarDec var' ]
+
+
+    genAll' :: Int -> A.Var -> A.Param -> A.Op -> [A.Exp]
+    genAll' 0 _ _ _ = []
+    genAll' n v1 v2 op' =
+        let var' = A.Var {v=(v v1) ++ (show (n - 1)), idx=Nothing, typ=Nothing}
+            val' = A.VarExp A.Var {v=pvar v2, idx=Nothing, typ=Nothing}
+            assign = A.Assign { var=var', val=val', op=Just op' }
+        in genAll' (n - 1) v1 v2 op' ++ [assign]
+
+    --- small helper function for extracting odd, even elements of lists
+    oddEvens :: [Int] -> ([Int], [Int])
+    oddEvens [] = ([], [])
+    oddEvens [x] = ([x], [])
+    oddEvens (x:y:xs) = (x:xp, y:yp) where (xp, yp) = oddEvens xs
