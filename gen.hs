@@ -73,7 +73,7 @@ module Gen where
                     1 -> A.IntExp 1
                     _ -> A.IntExp 0
             var' = A.Var { v=pvar v', idx=Just (show (n - 1)), typ=Nothing}
-            assign = A.Assign { var=var', val=val', op =Nothing }
+            assign = A.sAssign { var=var', val=val' }
         in genOne' (n - 1) v' ++ [assign]
 
     genOne :: Int ->  A.Dec
@@ -164,12 +164,13 @@ module Gen where
             f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
             g' = A.Var { v="g", idx=Nothing, typ=Just type32 }
             x  = A.Var { v="x", idx=Nothing, typ=Just type32 }
-            b' = A.Var { v= pvar b, idx=Nothing, typ=Nothing }
+            b' = A.sVar { v= pvar b }
 
             s1 = genSimpleAssign numWords (VarX f') (ParamX f)
             s2 = genSimpleAssign numWords (VarX g') (ParamX g)
             s3 = genOper numWords (VarX x) (VarX f') (VarX g') A.ExOr
-            s4 = A.Assign {var=b', val=Negate b', op=Nothing }
+            s4 = A.sAssign {var=b', val=Negate b' }
+
             s5 = genAll' numWords x b A.And
             s6 = genOper numWords (ParamX f) (VarX f') (VarX x) A.ExOr
             s7 = genOper numWords (ParamX g) (VarX g') (VarX x) A.ExOr
@@ -185,13 +186,13 @@ module Gen where
 
     genLoad' :: Int -> Int -> A.Var -> A.Param -> [A.Exp]
     genLoad' 0 0 v1 v2 =
-        let var' = A.Var{v=pvar v2, idx=Just (show 0), typ=Nothing}
+        let var' = A.sVar{v=pvar v2, idx=Just (show 0) }
             val' = A.Typecast{tvar=A.VarExp var' ,
                               newtyp=utype64}
-        in [A.Assign { var=v1, val=val', op=Nothing } ]
+        in [A.sAssign { var=v1, val=val' } ]
 
     genLoad' n x v1 v2 =
-        let var' = A.Var{v=pvar v2, idx=Just (show x), typ=Nothing }
+        let var' = A.sVar {v=pvar v2, idx=Just (show x) }
             val' = Parens ( A.Typecast { tvar=A.VarExp var' ,
                                          newtyp=utype64})
             assign = A.Assign { var=v1,
@@ -244,10 +245,10 @@ module Gen where
     genFromBytesLoad' [] _ _ _ _ = []
     genFromBytesLoad' (x:xs) (y:ys) n cumu name =
         let -- left side of assignment exprssion
-            var' = A.Var { v=name++show n, idx=Nothing, typ=Just type64}
+            var' = A.sVar { v=name++show n, typ=Just type64}
 
             -- what you apply load function to; s variable
-            fvar' = A.Var { v="s", idx=Nothing, typ=Nothing}
+            fvar' = A.sVar { v="s" }
             arg' = A.OpExp { left=A.VarExp fvar', right=A.IntExp cumu, oper=A.Plus}
 
             -- load function application expression; left half of right side
@@ -267,18 +268,18 @@ module Gen where
                                    oper=A.LShift}
 
             -- full assignment expression
-            assign = A.Assign { var=var', val=val', op=Nothing }
+            assign = A.sAssign { var=var', val=val' }
         in [assign] ++ genFromBytesLoad' xs ys (n + 1) (cumu + x) name
 
 
     genFromBytesCarries' :: [Int] -> [Int] -> Int -> [A.Exp]
     genFromBytesCarries' [] [] _ = []
     genFromBytesCarries' (x:xs) (y:ys) offset =
-        let var'   = A.Var{ v="carry" ++ show x, idx=Nothing, typ=Nothing}
+        let var'   = A.sVar{ v="carry" ++ show x }
             hvar'  = case offset of
-                0 -> A.Var{ v="h" ++ (show (x+1)), idx=Nothing, typ=Nothing}
-                _ -> A.Var{ v="h0", idx=Nothing, typ=Nothing}
-            hvar'' = A.Var{v="h" ++ show x, idx=Nothing, typ=Nothing}
+                0 -> A.sVar{ v="h" ++ (show (x+1)) }
+                _ -> A.sVar{ v="h0" }
+            hvar'' = A.sVar{v="h" ++ show x }
 
             shiftExp = A.OpExp { left=A.IntExp 1,
                                  right=A.IntExp (y - 1),
@@ -300,7 +301,7 @@ module Gen where
                               right=A.IntExp y,
                               oper=A.LShift }
 
-            s1 = A.Assign { var=var', val=s1val, op=Nothing }
+            s1 = A.sAssign { var=var', val=s1val }
             s2 = A.Assign { var=hvar', val=s2val, op=Just A.Plus }
             s3 = A.Assign { var=hvar'', val=s3val, op=Just A.Minus }
 
@@ -348,30 +349,29 @@ module Gen where
     genToBytesPlace' :: Int -> [Int] -> A.Var -> A.Param -> [A.Exp]
     genToBytesPlace' _ [] _ _ = []
     genToBytesPlace' n (x:xs) v1 v2 =
-        let var'  = A.Var { v=v v1 , idx=Nothing, typ=Nothing }
-            var'' = A.Var { v=pvar v2 ++ show n, idx=Nothing, typ=Nothing}
+        let var'  = A.sVar { v=v v1 }
+            var'' = A.sVar { v=pvar v2 ++ show n }
             l     = Parens A.OpExp { left=A.VarExp var'',
                                  right=A.VarExp var',
                                  oper=A.Plus }
             r     = A.OpExp { left  =l,
                               right =A.IntExp x,
                               oper  =A.RShift }
-            assign = A.Assign { var = A.Var{v=v v1, idx=Nothing, typ=Nothing },
-                                val = r,
-                                op=Nothing }
+            assign = A.sAssign { var = var',
+                                val = r }
         in  [assign] ++ genToBytesPlace' (n + 1) xs v1 v2
 
     genToBytesCarry' :: Int -> [Int] -> [A.Exp]
     genToBytesCarry' _ [] = []
     genToBytesCarry' n (x:xs) =
-        let var' = A.Var { v="carry" ++ show n, typ=Nothing, idx=Nothing }
-            h'   = A.Var { v="h" ++ show n, typ=Nothing, idx=Nothing }
-            h''  = A.Var { v="h" ++ show (n + 1), typ=Nothing, idx=Nothing }
+        let var' = A.sVar { v="carry" ++ show n }
+            h'   = A.sVar { v="h" ++ show n }
+            h''  = A.sVar { v="h" ++ show (n + 1) }
 
             s1val = A.OpExp { left=A.VarExp h', right=A.IntExp x, oper=A.RShift }
             s3val = A.OpExp { left=A.VarExp var', right=A.IntExp x, oper=A.LShift }
 
-            s1    = A.Assign { var=var', val= s1val, op=Nothing }
+            s1    = A.sAssign { var=var', val= s1val }
             s2    = case n of
                     9 -> A.Newline
                     _ -> A.Assign { var =h'',
@@ -386,14 +386,14 @@ module Gen where
     genToBytesMod' :: [Int] -> [Int] -> [Int] -> Int -> Int -> [A.Exp]
     genToBytesMod' [] [] _ _ _ = []
     genToBytesMod' (x:xs) (y:ys) (z:zs) n1 n2 =
-        let var' = A.VarExp A.Var { v="h" ++ show n1, idx=Nothing, typ=Nothing }
+        let var' = A.VarExp A.sVar { v="h" ++ show n1 }
 
-            x1 = A.Var { v="s", idx=Just (show n2), typ=Nothing }
-            x2 = A.Var { v="s", idx=Just (show (n2 + 1)), typ=Nothing }
-            x3 = A.Var { v="s", idx=Just (show (n2 + 2)), typ=Nothing }
+            x1 = A.sVar { v="s", idx=Just (show n2) }
+            x2 = A.sVar { v="s", idx=Just (show (n2 + 1)) }
+            x3 = A.sVar { v="s", idx=Just (show (n2 + 2)) }
             x4 = case x of
-                    4 -> A.Var { v="s", idx=Just (show (n2 + 3)), typ=Nothing }
-                    _ -> A.Var { v="", idx=Nothing, typ=Nothing }
+                    4 -> A.sVar { v="s", idx=Just (show (n2 + 3)) }
+                    _ -> A.sVar { v="" }
 
             val' = 8 * n2 - z  -- how many bits are left over
             a1  = A.OpExp { left=var',
@@ -403,7 +403,7 @@ module Gen where
                            right=A.IntExp (val' + 8),
                            oper=A.RShift}
 
-            var'' = A.Var { v="h" ++ show (n1 + 1), idx=Nothing, typ=Nothing }
+            var'' = A.sVar { v="h" ++ show (n1 + 1) }
             a3base = A.OpExp { left=var',
                                right=A.IntExp (val' + 16),
                                oper=A.RShift }
@@ -428,11 +428,11 @@ module Gen where
                     4 -> A.OpExp { left=Parens a4', right=Parens a', oper=A.Or }
                     _ -> A.Newline
 
-            s1 = A.Assign { var=x1, val=a1, op=Nothing }
-            s2 = A.Assign { var=x2, val=a2, op=Nothing }
-            s3 = A.Assign { var=x3, val=a3, op=Nothing }
+            s1 = A.sAssign { var=x1, val=a1 }
+            s2 = A.sAssign { var=x2, val=a2 }
+            s3 = A.sAssign { var=x3, val=a3 }
             s4 = case x of
-                    4-> A.Assign { var=x4, val=a4, op=Nothing }
+                    4-> A.sAssign { var=x4, val=a4 }
                     _-> A.Newline
 
         in [s1, s2, s3, s4] ++ [A.Newline] ++ genToBytesMod' xs ys zs (n1 + 1) (n2 + x)
@@ -469,11 +469,10 @@ module Gen where
                              right= Parens mod2,
                              oper=A.Plus }
 
-            wrap = A.Assign { var= A.Var{ v=v q, idx=Nothing, typ=Nothing },
+            wrap = A.sAssign { var= A.Var{ v=v q, idx=Nothing, typ=Nothing },
                               val= A.OpExp { left=mod,
                                               right=A.IntExp (last rep'),
-                                              oper=A.RShift },
-                              op=Nothing }
+                                              oper=A.RShift } }
 
             s1 = genSimpleAssign numWords (VarX h') (ParamX h)
             s2 = [ A.VarDec q ]
@@ -501,14 +500,13 @@ module Gen where
     genMulPreOffset' :: A.Var -> Int -> Int -> [A.Exp]
     genMulPreOffset' _ _ 0 = []
     genMulPreOffset' v1 offset n =
-        let var' = A.Var { v= (v v1) ++ show (n - 1) ++ "_" ++ show offset,
-                           idx=Nothing,
-                           typ=typ v1}
-            var'' = A.Var { v= (v v1) ++ show (n - 1), idx=Nothing, typ=Nothing}
+        let var' = A.sVar { v= (v v1) ++ show (n - 1) ++ "_" ++ show offset,
+                            typ=typ v1}
+            var'' = A.sVar { v= (v v1) ++ show (n - 1) }
             val' = A.OpExp { left=A.IntExp offset,
                              right=A.VarExp var'',
                              oper=A.Times }
-            assign = A.Assign { var=var', val=val', op=Nothing }
+            assign = A.sAssign { var=var', val=val' }
         in genMulPreOffset' v1 offset (n - 1) ++ [assign]
 
 
@@ -532,19 +530,19 @@ module Gen where
     genMulPrecomp'' :: A.Var -> [Int] -> [A.Exp]
     genMulPrecomp'' _ [] = []
     genMulPrecomp'' v1 (x:xs) =
-        let var' = A.Var { v= v v1 ++ "_" ++ show (2^x) , idx=Nothing, typ=Just type32 }
+        let var' = A.sVar { v= v v1 ++ "_" ++ show (2^x), typ=Just type32 }
             op = A.OpExp { left= A.IntExp (2^x),
                            right= A.VarExp v1,
                            oper= A.Times }
-            assign = A.Assign { var = var', val=op, op=Nothing }
+            assign = A.sAssign { var = var', val=op }
         in [assign] ++ genMulPrecomp'' v1 xs
 
 
     genMulComps' :: A.Var -> A.Var -> Int -> Int -> Int -> Int -> [Int] -> [A.Exp]
     genMulComps' _ _ _ _ _ _ [] = []
     genMulComps' v1 v2 l o v2idx v1idx (x:xs) =
-        let v1' = A.Var {v=v v1++show v1idx, idx=Nothing, typ=Nothing}
-            v2' = A.Var {v=v v2++show v2idx, idx=Nothing, typ=Nothing}
+        let v1' = A.sVar { v=v v1++show v1idx }
+            v2' = A.sVar { v=v v2++show v2idx }
 
             (m1, var1) = if (x /= 0)
                             then (2^x, "_" ++ (show (2^x)))
@@ -556,33 +554,33 @@ module Gen where
                     then ""
                 else "_" ++ show (m1 * m2)
 
-            finalleft = A.Var { v=v v1'++ v v2' ++ m, idx=Nothing, typ=Nothing }
-            finalv1   = A.Var { v=v v2' ++ var2, idx=Nothing, typ=Nothing }
-            finalv2   = A.Var { v=v v1' ++ var1, idx=Nothing, typ=Nothing }
+            finalleft = A.sVar { v=v v1'++ v v2' ++ m }
+            finalv1   = A.sVar { v=v v2' ++ var2 }
+            finalv2   = A.sVar { v=v v1' ++ var1 }
 
             cast      = A.Typecast { tvar= A.VarExp finalv1, newtyp=type64 }
             op        = A.OpExp    { left= A.VarExp finalv2, right= cast, oper=A.Times }
-            assign    = A.Assign   { var=finalleft, val=op, op=Nothing }
+            assign    = A.sAssign   { var=finalleft, val=op }
 
         in [assign] ++ genMulComps' v1 v2 l o (v2idx + 1) v1idx xs
 
     genMulSums' :: A.Var -> A.Var -> A.Param -> Int -> Int -> [[Int]] -> Int -> [A.Exp]
     genMulSums' _ _ _ _ _ [] _ = []
     genMulSums' v1 v2 out l o full idx =
-        [ A.Assign { var=A.Var { v=pvar out ++ show idx, idx=Nothing, typ=Just type64 },
-                     val= genMulSums'' v1 v2 0 idx l o full, op=Nothing } ]
+        let var' = A.Var { v=pvar out ++ show idx, idx=Nothing, typ=Just type64 }
+        in [ A.sAssign { var=var',
+                         val= genMulSums'' v1 v2 0 idx l o full } ]
 
     genMulSums'' :: A.Var -> A.Var -> Int -> Int -> Int -> Int -> [[Int]] -> A.Exp
     genMulSums''  _ _ _ _ _ _ [] = A.Newline
     genMulSums'' v1 v2 v1idx v2idx l o (x:xs) =
         -- corrects for negative indices by wrapping around
         let actualv2idx = (v2idx + l) `mod` l
-            exponent = head (drop actualv2idx x)
             s = if (v2idx < 0)
                     then o
                 else 1
 
-            x' = s * (2 ^ exponent)
+            x' = s * (2 ^ (head (drop actualv2idx x)))
             subscript = if (x' == 1)
                             then ""
                         else "_" ++ show x'
@@ -595,8 +593,31 @@ module Gen where
                     else A.OpExp { left=A.VarExp var', oper=A.Plus, right=rest}
         in final
 
-    genMulCarries' :: [A.Exp]
-    genMulCarries' = [A.Newline]
+    -- as far as i know, not generalized
+    genMulCarries' :: A.Var -> A.Var -> Int -> [Int] -> Int -> Int -> [A.Exp]
+    genMulCarries' v1 cv l r' o idx =
+        let r = r'!! idx
+            v' = A.sVar { v= v v1 ++ show idx}
+            v1' = A.sVar { v= v v1 ++ show ((idx + 1) `mod` l) }
+            var' = A.sVar { v=v cv ++ show idx }
+
+            s1shift = A.OpExp { left=A.IntExp 1, right=A.IntExp (r - 1), oper=A.LShift}
+            tvar' = A.Typecast { tvar= Parens s1shift, newtyp=type64 }
+            s1'' = A.OpExp { left=A.VarExp v', right=tvar', oper=A.Plus }
+
+            s1' = A.OpExp { left=Parens s1'', right=A.IntExp r, oper=A.RShift }
+            s1 = A.sAssign { var=var', val=s1' }
+
+            s2' = if (idx + 1 >= l)
+                    then A.OpExp { left=A.VarExp var', right=A.IntExp o, oper=A.Times }
+                  else A.VarExp var'
+            s2 = A.Assign { var=v1', val=s2', op=Just A.Plus}
+
+            s3' = A.OpExp { left=A.VarExp var', right=A.IntExp r, oper=A.LShift}
+            s3 = A.Assign { var=v', val= s3', op=Just A.Minus }
+
+        in [s1, s2, s3, A.Newline]
+
 
     genMul ::  P.Params -> A.Dec
     genMul p =
@@ -627,7 +648,13 @@ module Gen where
             zipped = zipWith ( genMulComps' f' g' numWords o 0 ) l1 r'
             s5 = concat zipped
             s6 = concat (map ( genMulSums' f' g' h numWords o r') l1)
-            s7 = genMulCarries'
+
+            -- TODO: PLACEHOLDER THINGy
+            w = [0, 4, 1, 5, 2, 6, 3, 7, 4, 8, 9, 0]
+            --w = map (\x -> if odd x then x + 2 else x) xs
+            --test = [0, 4, 1, 5, 2, 6, 3, 7, 4, 8, 9, 0]
+            s7 = concat (map (genMulCarries' h' carry numWords r o) w )
+            --s7 = [A.Newline]
             s9 = genVarDecs' numWords carry
             s8 = genSimpleAssign numWords (ParamX h) (VarX h')
 
@@ -666,8 +693,8 @@ module Gen where
         let h = A.Param { pvar="h", ptyp="fe" }
             f = A.Param { pvar="f", ptyp="fe" }
 
-            h' = A.Var { v="h", idx=Nothing, typ=Nothing }
-            f' = A.Var { v="f", idx=Nothing, typ=Nothing }
+            h' = A.Var { v="h", idx=Nothing, typ=Just type32 }
+            f' = A.Var { v="f", idx=Nothing, typ=Just type32 }
 
             carry = A.Var {v="carry", idx=Nothing, typ=Just type32}
             numWords = len p
@@ -731,9 +758,8 @@ module Gen where
                         A.Var { v= pv, idx=Just (show (n - 1)), typ=Nothing}
                     VarX (A.Var {v=v2n, idx=i, typ=t}) ->
                         A.Var { v=v2n ++ show (n - 1), idx=Nothing, typ=Nothing}
-            assign = A.Assign { var=var',
-                                val=A.VarExp (val'),
-                                op=Nothing }
+            assign = A.sAssign { var=var',
+                                val=A.VarExp (val') }
         in genSimpleAssign (n - 1) v1 v2 ++ [assign]
 
 
@@ -762,9 +788,8 @@ module Gen where
                              oper=oper',
                              right=A.VarExp A.Var{ v=v3' ++ show (n - 1),
                                                     idx=Nothing, typ=Nothing } }
-            assign = A.Assign { var=var',
-                                val=val',
-                                op=Nothing }
+            assign = A.sAssign { var=var',
+                                 val=val'}
         in genOper (n - 1) v1 v2 v3 oper' ++ [assign]
 
     genVarDecs' :: Int -> Var -> [A.Exp]

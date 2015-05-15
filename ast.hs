@@ -10,6 +10,8 @@ module Ast where
 
 
     data Var = Var {v :: String, idx :: Maybe String, typ :: Maybe String}
+    sVar = Var {v= "", idx=Nothing, typ=Nothing}
+
     data Param = Param { pvar :: String, ptyp :: String}
 
     data GenVar = VarX Var | ParamX Param
@@ -28,6 +30,8 @@ module Ast where
       | Parens (Exp)
       | Return (Exp)
       | Newline
+
+    sAssign = Assign { var= sVar, val= VarExp sVar, op=Nothing }
 
     data Op =
         Plus
