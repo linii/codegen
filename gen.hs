@@ -566,8 +566,34 @@ module Gen where
 
         in [assign] ++ genMulComps' v1 v2 l o (v2idx + 1) v1idx xs
 
-    genMulSums' :: [A.Exp]
-    genMulSums' = [A.Newline]
+    genMulSums' :: A.Var -> A.Var -> A.Param -> Int -> Int -> [[Int]] -> Int -> [A.Exp]
+    genMulSums' _ _ _ _ _ [] _ = []
+    genMulSums' v1 v2 out l o full idx =
+        [ A.Assign { var=A.Var { v=pvar out ++ show idx, idx=Nothing, typ=Just type64 },
+                     val= genMulSums'' v1 v2 0 idx l o full, op=Nothing } ]
+
+    genMulSums'' :: A.Var -> A.Var -> Int -> Int -> Int -> Int -> [[Int]] -> A.Exp
+    genMulSums''  _ _ _ _ _ _ [] = A.Newline
+    genMulSums'' v1 v2 v1idx v2idx l o (x:xs) =
+        -- corrects for negative indices by wrapping around
+        let actualv2idx = (v2idx + l) `mod` l
+            exponent = head (drop actualv2idx x)
+            s = if (v2idx < 0)
+                    then o
+                else 1
+
+            x' = s * (2 ^ exponent)
+            subscript = if (x' == 1)
+                            then ""
+                        else "_" ++ show x'
+            exp = v v1 ++ show v1idx ++ v v2 ++ show actualv2idx ++ subscript
+            var' = A.Var { v=exp, idx=Nothing, typ=Nothing }
+
+            rest = genMulSums'' v1 v2 (v1idx + 1) (v2idx - 1) l o xs
+            final = if v1idx + 1 >= l
+                        then A.VarExp var'
+                    else A.OpExp { left=A.VarExp var', oper=A.Plus, right=rest}
+        in final
 
     genMulCarries' :: [A.Exp]
     genMulCarries' = [A.Newline]
@@ -600,7 +626,7 @@ module Gen where
 
             zipped = zipWith ( genMulComps' f' g' numWords o 0 ) l1 r'
             s5 = concat zipped
-            s6 = genMulSums'
+            s6 = concat (map ( genMulSums' f' g' h numWords o r') l1)
             s7 = genMulCarries'
             s9 = genVarDecs' numWords carry
             s8 = genSimpleAssign numWords (ParamX h) (VarX h')
