@@ -32,4 +32,5 @@ Outputs curve25519 optimized code in C.
 - X precomp computation
 - X mul computations 
 - X mul sums
+- X mul carries 
 - clean up code  
