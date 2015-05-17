@@ -27,10 +27,17 @@ Outputs curve25519 optimized code in C.
 - X toBytes
 
 ### 5/14 (worked 6 hours)
-- started Mul
+- started & finished Mul
 - X precomp wraparound 
 - X precomp computation
 - X mul computations 
 - X mul sums
 - X mul carries 
-- clean up code  
+- X clean up code  
+
+### 5/15 
+- started Square 
+- coeffs 
+- offsets
+- muls 
+- sums

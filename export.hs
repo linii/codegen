@@ -18,7 +18,8 @@ module Export where
                 in (result ++ " " ++ name' ++
                     "(" ++ printParams p ++ ") \n{\n  " ++
                      addIndents (printExp b) ++ "\n}")
-          A.Typedef {type1=typ1, type2=typ2} -> "typedef " ++ typ1 ++ " " ++ typ2 ++ ";"
+          A.Typedef {type1=typ1, type2=typ2}
+                -> "typedef " ++ typ1 ++ " " ++ typ2 ++ ";"
           A.Ifdef {mode=str} -> "#ifndef " ++ str
           A.Define {defname=n, value=val} -> "#define " ++ n ++ " " ++ val
           A.Include {file=s} -> "#include " ++ s
@@ -52,9 +53,6 @@ module Export where
             ++ printExp exp ++ ";"
         A.Typecast {tvar=v, newtyp=t}
             -> "(" ++ t ++ ") " ++ printExp v
-        --A.ForExp {fvar=va, cond=c, inc=i, finit=f, floop=b} ->
-        --"for " ++ v va ++ " = " ++ printExp f ++ "; " ++ printExp c
-        --       ++ "; " ++ printExp i ++ " {\n  " ++ printExp b ++ "\n}"
         A.Parens e -> "(" ++ printExp e ++ ")"
         A.Return s -> "return " ++ printName s ++ ";"
         A.Newline -> ""
@@ -68,7 +66,7 @@ module Export where
     printVar var = case typ var of
                         Just n -> n ++ " "
                         Nothing -> ""
-                    ++ v var ++
+                   ++ v var ++
                    case idx var of
                         Just x -> "[" ++ x ++ "]"
                         Nothing -> ""
