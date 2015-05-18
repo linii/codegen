@@ -35,9 +35,17 @@ Outputs curve25519 optimized code in C.
 - X mul carries 
 - X clean up code  
 
-### 5/15 
-- started Square 
+### 5/15 (worked 2 hours)
+- started Square
+- X helper functions  
+
+### 5/16 (worked 2 hours)
+- X offsets
+
+### 5/17 (worked 4 hours)
+- X muls 
+- X sums
+
+### 5/18 (worked 5 hours)
+- finished Square 
 - coeffs 
-- offsets
-- muls 
-- sums

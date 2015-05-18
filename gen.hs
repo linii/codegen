@@ -721,22 +721,20 @@ module Gen where
     genSquareReindex' (x:xs) l idx =
         head (drop (idx `mod` l)  x) : genSquareReindex' xs l (idx - 1)
 
-    --precompute the precomputation variables needed for each
-    --of h_i
     genSquareHCoeffs' :: Int -> Int -> Int -> Int -> [Int] -> [Int]
     genSquareHCoeffs'  _ _ _ _ [] = []
     genSquareHCoeffs' l o i idx (x:xs) =
         let i' = (l + idx - i) `mod` l
-            m = if (i /= i)
-                    then 2
-                else 1
+            m = if (i' == i)
+                    then 1
+                else 2
             m' = if (i' + i >= l)
                     then o
                 else 1
-            final = if i' > i
+            m'' = if i' > i
                     then 0
-                else m * m' * (2^x)
-        in final : genSquareHCoeffs' l o (i + 1) idx xs
+                  else 1
+        in (m * m' * m'' * (2^x)) : genSquareHCoeffs' l o (i + 1) idx xs
 
     genSquareMins' :: Int -> Int -> Int -> [Int] -> Int
     genSquareMins'  _ _ _ [] = 0
@@ -744,87 +742,204 @@ module Gen where
         let t = genSquareMins' l (i+1) idx as
         in if (i >= idx)
                 then t
-                else if (t > 0)
-                    then min a t
-                else a
+            else if (t > 0)
+                then min a t
+            else a
 
     genSquareRed' :: [Int] -> [Int] -> [Int]
     genSquareRed' [] [] = []
-    genSquareRed' (x:xs) (y:ys) =
+    genSquareRed' (y:ys) (x:xs) =
         let assign = if ( y /= 0 && (x `rem` y == 0))
                         then x `div` y
                     else x
-        in assign : genSquareRed' xs ys
+        in assign : genSquareRed' ys xs
 
     genSquarePrecomp' :: [Int] -> Int
     genSquarePrecomp' a =
-        case filter ( > 1 ) a of
-            [] -> 0
-            _ -> minimum (filter ( > 1 ) a)
+        let a' = filter (> 1) a
+            h = if (a' == [])
+                    then 0
+                else minimum a'
+        in h
+        --case filter ( > 1 ) a of
+        --    [] -> 0
+        --    _ -> minimum (filter ( > 1 ) a)
 
-    genSquareCoeffs' :: [A.Exp]
-    genSquareCoeffs' = [A.Newline]
+    genSquareOffsets' ::A.Param ->  (Int, Int) -> A.Exp
+    genSquareOffsets' v' (value, idx) =
+        let var' = A.sVar { v=pvar v' ++ show idx ++ "_" ++ show value, typ=Just type32 }
+            val' = A.OpExp { left=A.VarExp A.sVar { v=show value},
+                             right=A.VarExp A.sVar { v=pvar v' ++ show idx } ,
+                             oper=A.Times }
+        in A.sAssign { var=var', val=val' }
 
-    genSquareOffsets' :: [A.Exp]
-    genSquareOffsets' = [A.Newline]
+    genSquareRe :: [[Int]] -> [[Int]]
+    genSquareRe a =
+        let x = map (splitAt 1) a
+            d = concat (map fst x)
+            e = map snd x
+        in if (d == [])
+           then []
+           else d : (genSquareRe e)
 
-    genSquareMul' :: [A.Exp]
-    genSquareMul' = [A.Newline]
+    genSquareMul' :: [Int] -> A.Var -> Int -> Int -> [Int] -> [Int] -> Int -> [A.Exp]
+    genSquareMul' _ _ _ _ _ [] _ = []
+    genSquareMul' (y:ys) v1 i l (o:os) (x:xs) idx =
+        let i' = (l + idx - i) `mod` l
+            lvar' = if (i + i' >= l)
+                        then case (x > 1 && (x `div` o) > 1) of
+                                True -> "_" ++ show (x `div` o)
+                                _ -> ""
+                    else if (x == 1)
+                        then ""
+                    else if (x < y)
+                        then ""
+                    else case y > 1 of
+                        True -> "_" ++ show y
+                        _ -> ""
 
-    genSquareSums' :: [A.Exp]
-    genSquareSums' = [A.Newline]
+            rvar' = if (i + i' >= l)
+                        then case o > 1 of
+                            True -> "_" ++ show o
+                            _ -> ""
+                    else if (x == 1)
+                        then ""
+                    else if (x < y)
+                        then case x > 1 of
+                            True -> "_" ++ show x
+                            _ -> ""
+                    else case (y /= 0) && (x `div` y) > 1 of
+                            True -> "_" ++ show (x `div` y)
+                            _ -> ""
 
-    genSquareCarries' :: [A.Exp]
-    genSquareCarries' = [A.Newline]
+            left' = A.VarExp A.sVar {v=v v1 ++ show i' ++ lvar'}
+            right' = A.Typecast { tvar=A.VarExp A.sVar {v=v v1 ++ show i ++ rvar'},
+                                  newtyp=type64}
+            var'' = if (i + i' >= l)
+                        then case x > 1 of
+                            True -> "_" ++ show x
+                            _ -> ""
+                    else if (x /= 1)
+                        then "_" ++ show x
+                    else ""
+            var' = A.sVar{v=v v1 ++ show i' ++ v v1 ++ show i ++ var'', typ=Just type64}
+            val' = A.OpExp { left=left', right=right', oper=A.Times}
+
+            final = genSquareMul' ys v1 (i + 1) l os xs idx
+
+        in if (i' > i || x == 0)
+                then final
+            else A.sAssign { var=var', val=val' } : final
+
+
+    genSquareSums' :: A.Var -> A.Var -> Int -> [Int] -> Int -> A.Exp
+    genSquareSums' v1 v2 l ca idx =
+        A.sAssign { var=A.sVar { v= v v2 ++ show idx, typ=Just type64},
+                    val=A.Seq (genSquareSums'' ca v1 0 l idx) }
+
+    genSquareSums'' :: [Int] -> A.Var -> Int -> Int -> Int-> [A.Exp]
+    genSquareSums'' [] _ _ _ _ = []
+    genSquareSums'' (x:xs) v1 i l idx =
+        let i' = (l + idx - i) `mod` l
+            s' = if (i + i' >= l || x /= 1)
+                    then "_" ++ show x
+                 else ""
+            sum = A.VarExp A.sVar {v=v v1++show i'++v v1++show i++ s'}
+            final = genSquareSums'' xs v1 (i + 1) l idx
+        in if null final
+                then [sum] ++ [A.VarExp A.sVar{v="done"}]
+            else if (i' > i || x== 0)
+                then final
+            else [A.OpExp { left=sum, oper=A.Plus, right=head final }]
+
+    genSquareCoeffs :: A.Var -> [Int] -> Int -> [A.Exp]
+    genSquareCoeffs _ [] _ = []
+    genSquareCoeffs v1 (x:xs) idx =
+        let var' = A.sVar { v=v v1 ++ show idx ++ "_" ++ show x, typ=Just type32}
+            val' = A.OpExp { left=A.IntExp x,
+                             right=A.VarExp A.sVar {v = v v1 ++ show idx},
+                             oper=A.Times }
+            final = genSquareCoeffs v1 xs idx
+        in if (x == 1)
+                then final
+           else A.sAssign { var=var', val=val' } : final
+
+           -- correct: ca = (x:xs)
+           -- moa = (o:os)
+           -- pca = (y:ys)
+    genSquareCoeffs'' :: [Int] -> Int -> Int -> [Int] -> [Int] -> Int -> [[Int]] -> [[Int]]
+    genSquareCoeffs'' [] _ _ _ _ _ precomp = precomp
+    genSquareCoeffs'' (x:xs) i l (o:os) (y:ys) idx precomp =
+        let final = genSquareCoeffs'' xs (i + 1) l os ys idx precomp
+            i' = (l + idx - i) `mod` l
+            ps = if (i + i' >= l)
+                    then anth final i' (x `div` o)
+                 else if x == 1
+                    then final
+                 else if (x < y)
+                    then anth final i x
+                 else anth (anth final i (x `div` y)) i' y
+        in if (i' > i || x == 0)
+                then final
+            else ps
+    --genSquareCoeffs'' _ _ _ _ _ _ precomp = precomp
+
+    anth :: [[Int]] -> Int -> Int -> [[Int]]
+    anth [] _ _ = []
+    anth (l:ls) idx entry =
+        if (idx == 0)
+            then ( (nub (entry : l)) : ls)
+        else l : (anth ls (idx-1) entry)
+
+    --  inter    = genSquareCoeffsWrapper ca pca [[]] numWords moa 0
+    -- coeff = pca
+    -- offsets = moa
+    genSquareCoeffsWrapper :: [[Int]] -> [Int] -> [[Int]] -> Int -> [Int] -> Int -> [[Int]]
+    genSquareCoeffsWrapper [] _ precomp _ _ _ = precomp
+    genSquareCoeffsWrapper (x:xs) pca precomp l moa idx =
+        let precomp' = genSquareCoeffs'' x 0 l moa pca idx precomp
+        in genSquareCoeffsWrapper xs pca precomp' l moa (idx + 1)
 
     genSquare ::  P.Params -> A.Dec
     genSquare p =
         let h        = A.Param { pvar="h", ptyp="fe" }
             f        = A.Param { pvar="f", ptyp="fe" }
-
             h'       = A.Var { v="h", idx=Nothing, typ=Just type32 }
             f'       = A.Var { v="f", idx=Nothing, typ=Just type32 }
             carry    = A.Var { v="carry", idx=Nothing, typ=Just type32 }
 
             numWords = len p
-            r        = rep p
             o        = offset p
-            mod'     = base p
             l        = [0..numWords - 1]
-            empty    = [ [] |  x <-- [ 1... numWords] ]
+            empty    = [ [] |  x <- [ 1.. numWords] ]
+            pl       = init ( 0 : (scanl1 (+) (rep p)) )
+            --pl       = 0: reverse ( tail (reverse (scanl1 (+) (rep p))))
+
+            ra       = genMulRep' numWords (base p) pl pl (pl ++ pl)
+            ra'      = map (genSquareReindex' ra numWords) l
+            ca      = zipWith (genSquareHCoeffs' numWords o 0 ) l ra'
+
+            moa      = zipWith (genSquareMins' numWords 0 ) l (genSquareRe ca)
+
+            rca      = map (genSquareRed' moa) ca
+            pca      = map (genSquarePrecomp') (genSquareRe rca)
+            moo'     = [ (x, y) | (x, y) <- zip moa l, x /= 0 ]
 
             s1       = genSimpleAssign numWords (VarX f') (ParamX f)
+            inter    = genSquareCoeffsWrapper ca pca [[]] numWords moa 0
+            s2       = concat (zipWith (genSquareCoeffs f') inter l)
 
-            places   = init ( 0 : (scanl1 (+) r) )
-            r'       = genMulRep' numWords mod' places places (places ++ places)
-            r''      = map (genSquareReindex' r' numWords) l
-            rbleh    = zipWith (genSquareHCoeffs' numWords o 0 ) l r''
-            sideways = transpose rbleh
-            -- three tick marks: the true sign of a depraved mind
-            moo      = zipWith (genSquareMins' numWords 0 ) l sideways
-            -- look it's a cow
-            woof     = map (genSquareRed' moo) rbleh
-            -- look it's a dog
-            meow     = map (genSquarePrecomp') (transpose woof)
-            -- wow
-
-            s2       = genSquareCoeffs'
-            s3       = genSquareOffsets'
-            s4       = genSquareMul'
-            s5       = genSquareSums'
-
+            s3       = map (genSquareOffsets' f) moo'
+            s4       = concat (zipWith (genSquareMul' pca f' 0 numWords moa) ca l)
+            s5       = zipWith (genSquareSums' f' h' numWords) ca l
             s6       = genVarDecs' numWords carry
-            -- TODO: PLACEHOLDER THINGy
             w        = [0, 4, 1, 5, 2, 6, 3, 7, 4, 8, 9, 0]
-            s7       = concat (map (genMulCarries' h' carry numWords r o) w )
+            s7       = concat (map (genMulCarries' h' carry numWords (rep p) o) w )
             s8       = genSimpleAssign numWords (ParamX h) (VarX h')
 
-            body'    = A.Seq  ( s1 ++ [A.Newline] ++
-                                s2 ++ [A.Newline] ++
-                                s3 ++ [A.Newline] ++
-                                s4 ++ [A.Newline] ++
-                                s5 ++ [A.Newline] ++
-                                s6 ++ [A.Newline] ++
+            body'    = A.Seq  ( s1 ++ [A.Newline] ++ s2 ++ [A.Newline] ++
+                                s3 ++ [A.Newline] ++ s4 ++ [A.Newline] ++
+                                s5 ++ [A.Newline] ++ s6 ++ [A.Newline] ++
                                 s7 ++ s8 )
 
         in A.FuncDec { name   = "fe_sq",
