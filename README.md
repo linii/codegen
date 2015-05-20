@@ -1,11 +1,13 @@
 ## Finite Field Arithmetic Code Generator 
 
 author: Lining Wang 
+
 advisor: Bryan Ford 
 
-updated: 5/13/15
+updated: 5/19/15
 
 Outputs curve25519 optimized code in C.  
+See lining_output.txt
 
 ## Log 
 
@@ -48,4 +50,4 @@ Outputs curve25519 optimized code in C.
 
 ### 5/18 (worked 5 hours)
 - finished Square 
-- coeffs 
+- X coeffs 
