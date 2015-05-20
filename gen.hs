@@ -27,7 +27,8 @@ module Gen where
                     genToBytes p,
                     genMul p,
                     genSquare p,
-                    genInvert p ]
+                    genInvert p,
+                    genMul12166 p ]
 
     genInclude1 :: A.Dec
     genInclude1 = A.Include "fe.h"
@@ -521,6 +522,7 @@ module Gen where
     ---------------------------- MULTIPLICATION --------------------------------
     ----------------------------------------------------------------------------
 
+    -- generates precomputations based on offset
     genMulPreOffset' :: A.Var -> Int -> Int -> [A.Exp]
     genMulPreOffset' _ _ 0 = []
     genMulPreOffset' v1 offset n =
@@ -550,7 +552,7 @@ module Gen where
             l    = genMulPrecomp'' var left
         in l ++ genMulPrecomp' v1 xs (i + 1)
 
-    -- make new precomputations for each fi
+    -- make new precomputations for each fi based on representation
     genMulPrecomp'' :: A.Var -> [Int] -> [A.Exp]
     genMulPrecomp'' _ [] = []
     genMulPrecomp'' v1 (x:xs) =
@@ -563,6 +565,7 @@ module Gen where
         in [assign] ++ genMulPrecomp'' v1 xs
 
 
+    -- generates the code for performing slightly optimized schoolbook multiplication
     genMulComps' :: A.Var -> A.Var -> Int -> Int -> Int -> Int -> [Int] -> [A.Exp]
     genMulComps' _ _ _ _ _ _ [] = []
     genMulComps' v1 v2 l o v2idx v1idx (x:xs) =
@@ -593,6 +596,7 @@ module Gen where
 
         in [assign] ++ genMulComps' v1 v2 l o (v2idx + 1) v1idx xs
 
+    -- generates the summation of each column of blocks
     genMulSums' :: A.Var -> A.Var -> A.Param -> Int -> Int -> [[Int]] -> Int -> [A.Exp]
     genMulSums' _ _ _ _ _ [] _ = []
     genMulSums' v1 v2 out l o full idx =
@@ -728,7 +732,6 @@ module Gen where
                              oper=A.Times }
         in A.sAssign { var=var', val=val' }
 
-    -- black voodoo magic
     genSquareMul' :: [Int] -> A.Var -> Int -> Int -> [Int] -> [Int] -> Int -> [A.Exp]
     genSquareMul' _ _ _ _ _ [] _ = []
     genSquareMul' (y:ys) v1 i l (o:os) (x:xs) idx =
@@ -909,6 +912,23 @@ module Gen where
 
         in A.FuncDec { name   = "fe_invert",
                        params = [out, z],
+                       rtype  = Nothing,
+                       body   = body' }
+
+
+    ----------------------------------------------------------------------------
+    ------------------------------ MUL_121666 ----------------------------------
+    ----------------------------------------------------------------------------
+
+    genMul12166 :: P.Params -> A.Dec
+    genMul12166 p =
+        let h        = A.Param { pvar="h", ptyp="fe" }
+            f        = A.Param { pvar="f", ptyp="fe" }
+
+            body'    = A.Newline
+
+        in A.FuncDec { name   = "fe_mul12166",
+                       params = [h, f],
                        rtype  = Nothing,
                        body   = body' }
 
